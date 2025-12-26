@@ -17,6 +17,12 @@ from .data import RaceDataFetcher, CSVRaceData, PaginatedRaceDataFetcher, MultiY
 from .transform import TimeConverter, NameParser, ColumnStandardizer, RaceDataTransformer
 from .plotting import KentigernPlot, RacePlotter
 from .stats import RaceStatistics, RaceComparison
+from .database import RaceResultsDatabase
+from .importers import ResultsImporter, SmartImporter
+from .manager import RaceResultsManager
+from .cli import cli
+from .reporting import generate_race_report, generate_comparison_report, generate_runner_report
+
 from .models import (
     NormalizedRaceResult,
     ColumnMapping,
@@ -24,7 +30,11 @@ from .models import (
     RaceResultsNormalizer,
     RaceCategory,
     Gender,
+    RaceStatus,
     normalize_race_results,
+    fix_malformed_time,
+    normalize_club_name,
+    parse_age_category,
 )
 
 __all__ = [
@@ -46,5 +56,17 @@ __all__ = [
     'RaceResultsNormalizer',
     'RaceCategory',
     'Gender',
+    'RaceStatus',
     'normalize_race_results',
+    'fix_malformed_time',
+    'normalize_club_name',
+    'parse_age_category',
+    'RaceResultsDatabase',
+    'ResultsImporter',
+    'SmartImporter',
+    'RaceResultsManager',
+    'cli',
+    'generate_race_report',
+    'generate_comparison_report',
+    'generate_runner_report',
 ]

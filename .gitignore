@@ -57,3 +57,13 @@ Thumbs.db
 *.tmp
 *.bak
 quicksave.csv
+
+# Documentation builds
+docs/_build/
+docs/_autosummary/
+
+# Test coverage
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/

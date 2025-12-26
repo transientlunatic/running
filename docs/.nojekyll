@@ -1,0 +1,2 @@
+# .nojekyll file to tell GitHub Pages not to process with Jekyll
+# This ensures Sphinx documentation is served correctly

@@ -32,13 +32,28 @@ setup(
         "nameparser>=1.1.0",
         "requests>=2.26.0",
         "tqdm>=4.62.0",
+        "pydantic>=2.0.0",
+        "typing-extensions>=4.6.0",
+        "beautifulsoup4>=4.9.0",
+        "lxml>=4.6.0",
+        "click>=8.0.0",
+        "otter-report>=0.1.0",
     ],
+    entry_points={
+        "console_scripts": [
+            "running-results=running_results.cli:cli",
+        ],
+    },
     extras_require={
         "dev": [
             "pytest>=6.0",
             "pytest-cov>=2.0",
             "black>=21.0",
             "flake8>=3.9",
+        ],
+        "docs": [
+            "sphinx>=4.0",
+            "kentigern>=0.1.0",
         ],
     },
 )
