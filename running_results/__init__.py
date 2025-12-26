@@ -13,18 +13,38 @@ Modules:
 
 __version__ = "0.1.0"
 
-from .data import RaceDataFetcher, CSVRaceData
-from .transform import TimeConverter, NameParser, ColumnStandardizer
+from .data import RaceDataFetcher, CSVRaceData, PaginatedRaceDataFetcher, MultiYearRaceData
+from .transform import TimeConverter, NameParser, ColumnStandardizer, RaceDataTransformer
 from .plotting import KentigernPlot, RacePlotter
-from .stats import RaceStatistics
+from .stats import RaceStatistics, RaceComparison
+from .models import (
+    NormalizedRaceResult,
+    ColumnMapping,
+    TimeParser,
+    RaceResultsNormalizer,
+    RaceCategory,
+    Gender,
+    normalize_race_results,
+)
 
 __all__ = [
     'RaceDataFetcher',
     'CSVRaceData',
+    'PaginatedRaceDataFetcher',
+    'MultiYearRaceData',
     'TimeConverter',
     'NameParser',
     'ColumnStandardizer',
+    'RaceDataTransformer',
     'KentigernPlot',
     'RacePlotter',
     'RaceStatistics',
+    'RaceComparison',
+    'NormalizedRaceResult',
+    'ColumnMapping',
+    'TimeParser',
+    'RaceResultsNormalizer',
+    'RaceCategory',
+    'Gender',
+    'normalize_race_results',
 ]
