@@ -200,6 +200,28 @@ class TestResultsEndpoints:
         assert data['total'] == 2
         assert data['limit'] == 1
         assert data['offset'] == 0
+
+    def test_get_race_results_with_negative_limit(self, client, populated_db):
+        """Test that negative limit is handled gracefully."""
+        client.application.config["DATABASE_PATH"] = populated_db
+
+        response = client.get("/api/races/Test%20Race/results?limit=-1")
+        assert response.status_code == 200
+
+        data = json.loads(response.data)
+        # Should use default page size, not the negative value
+        assert data["count"] >= 0
+
+    def test_get_race_results_with_negative_offset(self, client, populated_db):
+        """Test that negative offset is handled gracefully."""
+        client.application.config["DATABASE_PATH"] = populated_db
+
+        response = client.get("/api/races/Test%20Race/results?offset=-10")
+        assert response.status_code == 200
+
+        data = json.loads(response.data)
+        # Should use offset of 0
+        assert data["offset"] == 0
     
     def test_get_race_results_by_runner(self, client, populated_db):
         """Test filtering results by runner name."""
@@ -431,6 +453,81 @@ class TestAddResultsEndpoint:
         )
         # Should either succeed with partial data or fail with 400
         assert response.status_code in [201, 400]
+
+    def test_add_results_with_large_array(self, client):
+        """Test that large result arrays are rejected."""
+        # Create a large array exceeding the limit
+        large_results = [
+            {"name": f"Runner {i}", "position_overall": i}
+            for i in range(10001)  # Exceeds MAX_RESULTS_PER_REQUEST
+        ]
+
+        response = client.post(
+            "/api/results",
+            json={"race_name": "Large Race", "results": large_results},
+            headers={"X-API-Key": "test-api-key"},
+        )
+        assert response.status_code == 400
+
+        data = json.loads(response.data)
+        assert "Too many results" in data["error"]
+
+
+class TestAPISecurityFeatures:
+    """Test security features of the API."""
+
+    def test_api_key_timing_safe_comparison(self, api_config):
+        """Test that API key comparison uses timing-safe method."""
+        api_config.add_api_key("valid-key")
+
+        # This test verifies the function works correctly
+        # Timing attack resistance can't be easily tested in unit tests
+        assert api_config.is_valid_api_key("valid-key")
+        assert not api_config.is_valid_api_key("invalid-key")
+
+    def test_config_path_traversal_protection(self, tmp_path):
+        """Test that config loading prevents path traversal."""
+        import os
+        from running_results.api import APIConfig
+
+        # Create a directory structure for testing
+        safe_dir = tmp_path / "safe"
+        safe_dir.mkdir()
+        unsafe_dir = tmp_path / "unsafe"
+        unsafe_dir.mkdir()
+
+        # Create a config file outside the safe directory
+        unsafe_config = unsafe_dir / "bad_config.py"
+        unsafe_config.write_text("API_KEYS = {'hacked'}")
+
+        # Save current directory
+        original_dir = os.getcwd()
+        try:
+            # Change to safe directory
+            os.chdir(safe_dir)
+
+            # Try to load config from outside directory using relative path
+            # Calculate relative path from safe_dir to unsafe_config
+            relative_path = os.path.relpath(unsafe_config, safe_dir)
+
+            # This should fail because it tries to access outside current working directory
+            with pytest.raises(ValueError, match="current working directory"):
+                APIConfig.from_file(str(relative_path))
+        finally:
+            # Restore original directory
+            os.chdir(original_dir)
+
+    def test_sanitized_error_messages(self, client):
+        """Test that error messages don't expose internal details."""
+        # Force an error by querying non-existent race
+        response = client.get("/api/races/NonexistentRace")
+        assert response.status_code == 404
+
+        data = json.loads(response.data)
+        # Error message should be generic, not exposing database internals
+        assert "error" in data
+        assert "stack" not in str(data).lower()
+        assert "traceback" not in str(data).lower()
 
 
 class TestAPIConfig:

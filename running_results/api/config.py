@@ -6,6 +6,7 @@ API keys, and deployment settings.
 """
 
 import os
+import secrets
 from typing import Set
 
 
@@ -50,10 +51,30 @@ class APIConfig:
     DEFAULT_PAGE_SIZE: int = 100
     MAX_PAGE_SIZE: int = 1000
 
+    # Security settings
+    MAX_RESULTS_PER_REQUEST: int = 10000  # Maximum results to add in a single request
+
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        # Warn if using default SECRET_KEY
+        if self.SECRET_KEY == "change-this-in-production" and not self.DEBUG:
+            import warnings
+
+            warnings.warn(
+                "Using default SECRET_KEY in production mode! "
+                "Set RACE_API_SECRET_KEY environment variable.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+    MAX_PAGE_SIZE: int = 1000
+
     @classmethod
     def from_env(cls) -> "APIConfig":
         """Create configuration from environment variables."""
-        return cls()
+        config = cls()
+        config.__post_init__()
+        return config
 
     @classmethod
     def from_file(cls, config_path: str) -> "APIConfig":
@@ -67,26 +88,41 @@ class APIConfig:
             APIConfig instance
 
         Raises:
-            ValueError: If config_path contains path traversal or is outside allowed directories
+            ValueError: If config_path is invalid or outside allowed directories
+
+        Security Warning:
+            This method executes arbitrary Python code from the config file.
+            Only use this with trusted configuration files in controlled environments.
         """
         config = cls()
 
         if not os.path.exists(config_path):
+            config.__post_init__()
             return config
 
         # Security: Validate config path to prevent path traversal attacks
-        abs_config_path = os.path.abspath(config_path)
+        # Use realpath to resolve symlinks and .. components
+        abs_config_path = os.path.realpath(config_path)
 
         # Ensure the config file has a .py extension
         if not abs_config_path.endswith(".py"):
             raise ValueError("Config file must have .py extension")
 
-        # Ensure no path traversal attempts
-        if ".." in config_path or config_path.startswith("/"):
-            # Only allow relative paths in current directory or subdirectories
-            raise ValueError(
-                "Config path must be a relative path without '..' components"
-            )
+        # Ensure the resolved path stays within the allowed base directory
+        # Restrict to the current working directory and its subdirectories
+        allowed_base_dir = os.path.realpath(os.getcwd())
+        try:
+            # Check if the config file is within the allowed directory
+            if (
+                os.path.commonpath([allowed_base_dir, abs_config_path])
+                != allowed_base_dir
+            ):
+                raise ValueError(
+                    "Config path must be within the current working directory"
+                )
+        except ValueError:
+            # commonpath raises ValueError if paths are on different drives (Windows)
+            raise ValueError("Config path must be within the current working directory")
 
         # Load config file as Python module
         import importlib.util
@@ -101,6 +137,7 @@ class APIConfig:
                 if key.isupper() and hasattr(config, key):
                     setattr(config, key, getattr(module, key))
 
+        config.__post_init__()
         return config
 
     def add_api_key(self, key: str) -> None:
@@ -112,5 +149,20 @@ class APIConfig:
         self.API_KEYS.discard(key)
 
     def is_valid_api_key(self, key: str) -> bool:
-        """Check if an API key is valid."""
-        return key in self.API_KEYS
+        """
+        Check if an API key is valid using timing-safe comparison.
+
+        Args:
+            key: API key to validate
+
+        Returns:
+            True if the key is valid, False otherwise
+        """
+        if not self.API_KEYS:
+            return False
+
+        # Use timing-safe comparison to prevent timing attacks
+        for valid_key in self.API_KEYS:
+            if secrets.compare_digest(key, valid_key):
+                return True
+        return False

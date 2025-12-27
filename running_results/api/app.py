@@ -5,6 +5,7 @@ This module creates and configures the Flask application with all
 API routes for accessing and managing race results.
 """
 
+import logging
 from flask import Flask, jsonify, request, g
 from flask_cors import CORS
 from typing import Optional
@@ -15,6 +16,9 @@ from ..database import RaceResultsDatabase
 from ..models import NormalizedRaceResult, normalize_race_results, ColumnMapping
 from .config import APIConfig
 from .auth import require_api_key
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -125,12 +129,14 @@ def register_routes(app: Flask) -> None:
                 }
             )
         except Exception as e:
+            # Log the detailed error but return generic message to users
+            logger.error(f"Health check failed: {str(e)}", exc_info=True)
             return (
                 jsonify(
                     {
                         "status": "unhealthy",
                         "timestamp": datetime.utcnow().isoformat(),
-                        "error": str(e),
+                        "error": "Database connection failed",
                     }
                 ),
                 503,
@@ -175,7 +181,8 @@ def register_routes(app: Flask) -> None:
                 {"races": races_df.to_dict("records"), "count": len(races_df)}
             )
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            logger.error(f"Error listing races: {str(e)}", exc_info=True)
+            return jsonify({"error": "Failed to retrieve races"}), 500
 
     @app.route("/api/races/<race_name>", methods=["GET"])
     def get_race(race_name: str):
@@ -215,7 +222,8 @@ def register_routes(app: Flask) -> None:
             return jsonify(response)
 
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            logger.error(f"Error getting race: {str(e)}", exc_info=True)
+            return jsonify({"error": "Failed to retrieve race information"}), 500
 
     @app.route("/api/races/<race_name>/results", methods=["GET"])
     def get_race_results(race_name: str):
@@ -245,11 +253,22 @@ def register_routes(app: Flask) -> None:
             year = request.args.get("year", type=int)
             runner_name = request.args.get("runner_name")
             club = request.args.get("club")
-            limit = min(
-                request.args.get("limit", 100, type=int),
-                app.config["API_CONFIG"].MAX_PAGE_SIZE,
-            )
-            offset = request.args.get("offset", 0, type=int)
+
+            # Parse and validate pagination parameters
+            raw_limit = request.args.get("limit", 100, type=int)
+            raw_offset = request.args.get("offset", 0, type=int)
+
+            # Validate limit (ensure non-negative and within bounds)
+            if raw_limit is None or raw_limit < 0:
+                limit = app.config["API_CONFIG"].DEFAULT_PAGE_SIZE
+            else:
+                limit = min(raw_limit, app.config["API_CONFIG"].MAX_PAGE_SIZE)
+
+            # Validate offset (ensure non-negative)
+            if raw_offset is None or raw_offset < 0:
+                offset = 0
+            else:
+                offset = raw_offset
 
             # Query database
             results_df = db.get_race_results(
@@ -274,7 +293,8 @@ def register_routes(app: Flask) -> None:
             )
 
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            logger.error(f"Error getting race results: {str(e)}", exc_info=True)
+            return jsonify({"error": "Failed to retrieve race results"}), 500
 
     @app.route("/api/races/<race_name>/years/<int:year>", methods=["GET"])
     def get_race_year_results(race_name: str, year: int):
@@ -317,7 +337,8 @@ def register_routes(app: Flask) -> None:
             )
 
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            logger.error(f"Error getting race year results: {str(e)}", exc_info=True)
+            return jsonify({"error": "Failed to retrieve race results"}), 500
 
     @app.route("/api/runner/<name>", methods=["GET"])
     def get_runner_history(name: str):
@@ -360,7 +381,8 @@ def register_routes(app: Flask) -> None:
             )
 
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            logger.error(f"Error getting runner history: {str(e)}", exc_info=True)
+            return jsonify({"error": "Failed to retrieve runner history"}), 500
 
     @app.route("/api/results", methods=["POST"])
     @require_api_key
@@ -418,6 +440,20 @@ def register_routes(app: Flask) -> None:
             if not isinstance(results_data, list):
                 return jsonify({"error": "results must be an array"}), 400
 
+            # Validate results array size to prevent resource exhaustion
+            max_results = app.config["API_CONFIG"].MAX_RESULTS_PER_REQUEST
+            if len(results_data) > max_results:
+                return (
+                    jsonify(
+                        {
+                            "error": "Too many results",
+                            "message": f"Maximum {max_results} results per request. "
+                            f"Received {len(results_data)}.",
+                        }
+                    ),
+                    400,
+                )
+
             # Parse optional parameters
             race_year = data.get("race_year")
             race_category = data.get("race_category")
@@ -444,19 +480,32 @@ def register_routes(app: Flask) -> None:
                     for i, result in enumerate(results_data):
                         try:
                             normalized_results.append(NormalizedRaceResult(**result))
-                        except Exception as e:
+                        except Exception as validation_error:
+                            # Log detailed error but return sanitized message
+                            logger.error(
+                                f"Validation error at index {i}: {str(validation_error)}",
+                                exc_info=True,
+                            )
                             return (
                                 jsonify(
                                     {
                                         "error": f"Invalid result data at index {i}",
-                                        "message": str(e),
-                                        "result": result,
+                                        "message": "Data validation failed. Check field types and required fields.",
                                     }
                                 ),
                                 400,
                             )
             except Exception as e:
-                return jsonify({"error": "Invalid result data", "message": str(e)}), 400
+                logger.error(f"Error processing results: {str(e)}", exc_info=True)
+                return (
+                    jsonify(
+                        {
+                            "error": "Invalid result data",
+                            "message": "Failed to process results. Check data format.",
+                        }
+                    ),
+                    400,
+                )
 
             # Add to database
             db = get_db()
@@ -482,7 +531,16 @@ def register_routes(app: Flask) -> None:
             )
 
         except Exception as e:
-            return jsonify({"error": "Failed to add results", "message": str(e)}), 500
+            logger.error(f"Error adding results: {str(e)}", exc_info=True)
+            return (
+                jsonify(
+                    {
+                        "error": "Failed to add results",
+                        "message": "An error occurred while processing your request.",
+                    }
+                ),
+                500,
+            )
 
 
 def register_error_handlers(app: Flask) -> None:

@@ -17,22 +17,23 @@ http://localhost:5000/api
 
 ## Authentication
 
-Protected endpoints (currently only `POST /api/results`) require API key authentication. The API key can be provided in three ways:
+Protected endpoints (currently only `POST /api/results`) require API key authentication. The API key can be provided in two ways:
 
 1. **X-API-Key Header** (recommended):
    ```
    X-API-Key: your-api-key-here
    ```
 
-2. **Query Parameter**:
-   ```
-   ?api_key=your-api-key-here
-   ```
-
-3. **Authorization Bearer Token**:
+2. **Authorization Bearer Token**:
    ```
    Authorization: Bearer your-api-key-here
    ```
+
+3. **Query Parameter** (DEPRECATED - security risk):
+   ```
+   ?api_key=your-api-key-here
+   ```
+   **⚠️ Security Warning:** Passing API keys in query parameters is strongly discouraged because URLs (including query strings) are logged in browser history, server logs, and intermediary proxies, potentially exposing your API key. Use the `X-API-Key` header or the `Authorization` header instead.
 
 ## Endpoints
 
