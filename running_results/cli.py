@@ -29,6 +29,81 @@ def cli(ctx, db):
 
 
 @cli.command()
+@click.option('--dir', 'dir_path', type=click.Path(exists=True, file_okay=False, dir_okay=True), required=True, help='Directory containing result files')
+@click.option('--pattern', default='*.csv', help='Glob pattern for files (e.g., *.csv, *.tsv, *.xlsx)')
+@click.option('--recursive', is_flag=True, default=True, help='Recurse into subdirectories')
+@click.option('--name', help='Default race name (overrides filename guessing)')
+@click.option('--year', type=int, help='Default race year (overrides filename guessing)')
+@click.option('--category', type=click.Choice([c.value for c in RaceCategory]), default='road_race', help='Race category')
+@click.option('--default-category', help='Default age category when missing (e.g., M or F)')
+@click.option('--guess-from-filename', is_flag=True, default=True, help='Infer race name/year from filename')
+@click.pass_context
+def bulk_import(ctx, dir_path, pattern, recursive, name, year, category, default_category, guess_from_filename):
+    """
+    Bulk-import results from a directory.
+    
+    Scans for files matching a pattern and imports them.
+    Attempts to infer race name and year from filenames when not provided.
+    
+    Examples:
+        running-results bulk-import --dir tinto --pattern "*.csv"
+        running-results bulk-import --dir data --pattern "**/*.csv" --name "Tinto" --category fell_race
+    """
+    db_path = ctx.obj['DB_PATH']
+
+    def infer_name_year(p: Path):
+        file_stem = p.stem
+        # Try to find a 4-digit year
+        import re
+        m = re.search(r'(19|20)\d{2}', file_stem)
+        infer_year = int(m.group(0)) if m else None
+        # Race name: remove year and separators
+        cleaned = re.sub(r'(19|20)\d{2}', '', file_stem)
+        cleaned = cleaned.replace('_', ' ').replace('-', ' ').strip()
+        # If empty, use parent folder name
+        infer_name = cleaned or p.parent.name
+        # Title-case for readability
+        infer_name = infer_name.strip()
+        return infer_name, infer_year
+
+    root = Path(dir_path)
+    files = []
+    if recursive:
+        files = list(root.rglob(pattern))
+    else:
+        files = list(root.glob(pattern))
+
+    if not files:
+        click.echo(f"No files found in {dir_path} matching '{pattern}'.")
+        return
+
+    imported = 0
+    errors = 0
+    with RaceResultsManager(db_path) as manager:
+        for fp in files:
+            race_name = name
+            race_year = year
+            if guess_from_filename:
+                inf_name, inf_year = infer_name_year(fp)
+                race_name = race_name or inf_name
+                race_year = race_year or inf_year
+            try:
+                count = manager.add_from_file(
+                    file_path=str(fp),
+                    race_name=race_name,
+                    year=race_year,
+                    race_category=category,
+                    auto_detect=True,
+                    default_age_category=default_category
+                )
+                imported += count
+                click.echo(f"✓ {fp} → {race_name} ({race_year}) [{count} rows]")
+            except Exception as e:
+                errors += 1
+                click.echo(f"✗ {fp}: {e}", err=True)
+
+    click.echo(f"\nSummary: Imported {imported} rows from {len(files)-errors} file(s). {errors} error(s).")
+
 @click.argument('file_path', type=click.Path(exists=True))
 @click.option('--name', required=True, help='Race name')
 @click.option('--year', type=int, required=True, help='Race year')

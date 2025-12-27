@@ -463,9 +463,62 @@ def normalize_club_name(club: Optional[str]) -> Optional[str]:
     
     club = club.strip()
     
-    # Handle unattached runners
+    # Handle unattached runners first
     if club.upper() in ['U/A', 'N/A', 'UNATTACHED', 'UA', 'NA', '']:
         return None
+    
+    # Canonical synonyms and abbreviations
+    # Map common variants to a single canonical club name
+    synonyms = {
+        # Westerlands
+        'westies': 'Westerlands CCC',
+        'westerlands': 'Westerlands CCC',
+        'westerlands ccc': 'Westerlands CCC',
+        'westerlands cross country club': 'Westerlands CCC',
+        
+        # Hunters Bog Trotters
+        'hbt': 'Hunters Bog Trotters',
+        'hunters bog trotters': 'Hunters Bog Trotters',
+        
+        # Ochil Hill Runners
+        'ochil hr': 'Ochil Hill Runners',
+        'ochils hr': 'Ochil Hill Runners',
+        'ochil hill runners': 'Ochil Hill Runners',
+        'ochils hill runners': 'Ochil Hill Runners',
+        
+        # Lothian variants
+        'lothian rc': 'Lothian RC',
+        'lothian': 'Lothian RC',
+        
+        # Lochtayside variants
+        'lochtayside': 'Lochtayside',
+        'lochtay': 'Lochtayside',
+        
+        # North Ayrshire variants
+        'north ayrshire': 'North Ayrshire AC',
+        'north ayrshire ac': 'North Ayrshire AC',
+        'north ayrshire athletics club': 'North Ayrshire AC',
+        
+        # Carnegie Harriers, etc. (identity mappings for consistency)
+        'carnegie harriers': 'Carnegie Harriers',
+        'shettleston harriers': 'Shettleston Harriers',
+        'deeside runners': 'Deeside Runners',
+        'bellahouston road runners': 'Bellahouston Road Runners',
+        'dumfries rc': 'Dumfries RC',
+        'dumfries running club': 'Dumfries RC',
+        'galloway harriers': 'Galloway Harriers',
+        'hunters bog trotters': 'Hunters Bog Trotters',
+        'moorfoot runners': 'Moorfoot Runners',
+        'penicuik harriers': 'Penicuik Harriers',
+        'portobello rrc': 'Portobello RRC',
+        'tinto hill runners': 'Tinto Hill Runners',
+        'teviotdale harriers': 'Teviotdale Harriers',
+        'fife ac': 'Fife AC',
+    }
+    
+    key = club.lower().replace('.', '').strip()
+    if key in synonyms:
+        return synonyms[key]
     
     # Common suffixes to remove for normalization
     suffixes = [
@@ -476,10 +529,15 @@ def normalize_club_name(club: Optional[str]) -> Optional[str]:
     ]
     
     normalized = club
+    # Remove suffixes (case-insensitive)
     for suffix in suffixes:
-        if normalized.upper().endswith(suffix.upper()):
+        suffix_upper = suffix.upper()
+        if normalized.upper().endswith(suffix_upper):
             normalized = normalized[:-len(suffix)].strip()
             break
+    
+    # Title-case for consistency: capitalize each word
+    normalized = ' '.join(word.capitalize() for word in normalized.split())
     
     return normalized if normalized else None
 

@@ -240,6 +240,9 @@ class EloRanking:
                 r.club,
                 r.position_overall,
                 r.race_status,
+                r.finish_time_seconds,
+                r.chip_time_seconds,
+                r.gun_time_seconds,
                 re.race_year,
                 re.race_date,
                 re.edition_id,
@@ -247,7 +250,7 @@ class EloRanking:
             FROM results r
             JOIN race_editions re ON r.edition_id = re.edition_id
             JOIN races ra ON re.race_id = ra.race_id
-            WHERE r.race_status = 'finished'
+            WHERE LOWER(COALESCE(r.race_status, '')) = 'finished'
         '''
         
         params = []
@@ -259,7 +262,7 @@ class EloRanking:
             params.append(race_year)
         
         # CRITICAL: Order by date, then position - processes races chronologically
-        query += ' ORDER BY re.race_date ASC, re.race_year ASC, r.position_overall ASC'
+        query += ' ORDER BY re.race_date ASC, re.race_year ASC, COALESCE(r.position_overall, 9999999) ASC, COALESCE(r.finish_time_seconds, r.chip_time_seconds, r.gun_time_seconds, 9999999) ASC'
         
         cursor.execute(query, params)
         results = cursor.fetchall()
@@ -277,7 +280,27 @@ class EloRanking:
         race_order = []  # Track order of editions
         
         for result in results:
-            (result_id, name, club, position, status, year, date, edition_id, race_name) = result
+            (
+                result_id,
+                name,
+                club,
+                position,
+                status,
+                finish_time_seconds,
+                chip_time_seconds,
+                gun_time_seconds,
+                year,
+                date,
+                edition_id,
+                race_name
+            ) = result
+
+            # Compute a best-available time (seconds) for ordering and comparisons
+            time_seconds = None
+            for t in (finish_time_seconds, chip_time_seconds, gun_time_seconds):
+                if t is not None:
+                    time_seconds = t
+                    break
             
             if edition_id not in races_by_edition:
                 races_by_edition[edition_id] = {
@@ -288,7 +311,10 @@ class EloRanking:
                 }
                 race_order.append(edition_id)
             
-            races_by_edition[edition_id]['runners'].append((name, club, position))
+            # Skip entries with neither position nor time
+            if position is None and time_seconds is None:
+                continue
+            races_by_edition[edition_id]['runners'].append((name, club, position, time_seconds))
         
         # Process each race in chronological order
         # Ratings accumulate: each race updates from the previous race result
@@ -300,7 +326,7 @@ class EloRanking:
                 date=race_info['date']
             )
     
-    def _update_race_elo(self, year: int, runners: List[Tuple[str, str, int]], date: Optional[str] = None):
+    def _update_race_elo(self, year: int, runners: List[Tuple[str, str, Optional[int], Optional[float]]], date: Optional[str] = None):
         """
         Update Elo ratings for runners in a specific race.
         
@@ -316,12 +342,15 @@ class EloRanking:
         
         # Ensure all runners exist (without incrementing appearance_count)
         runner_ids = []
-        for name, club, _ in runners:
+        valid_runners = []
+        for name, club, *_ in runners:
             runner_id = self.registry.get_or_create_runner(name, club, year, increment_appearance=False)
-            runner_ids.append(runner_id)
+            if runner_id is not None:
+                runner_ids.append(runner_id)
+                valid_runners.append((name, club) + tuple(_))
         
         # Now increment appearance_count once per unique runner
-        for name, club, _ in runners:
+        for name, club, *_ in valid_runners:
             cursor.execute(
                 '''UPDATE runners 
                    SET appearance_count = appearance_count + 1
@@ -360,7 +389,7 @@ class EloRanking:
         # E.g., with 157 finishers, each runner plays 156 games (one vs each other runner)
         # But they participate in 312 directed matches: 156 where they won/lost + 156 where opponent won/lost
         # We count "games_played" as total directed comparisons for match density tracking
-        for i, (name_i, club_i, pos_i) in enumerate(runners):
+        for i, (name_i, club_i, pos_i, time_i) in enumerate(valid_runners):
             runner_id_i = runner_ids[i]
             
             # Get current rating
@@ -372,7 +401,7 @@ class EloRanking:
             rating_i = result[0] if result else self.INITIAL_RATING
             
             # Compare with all other runners
-            for j, (name_j, club_j, pos_j) in enumerate(runners):
+            for j, (name_j, club_j, pos_j, time_j) in enumerate(valid_runners):
                 if i == j:
                     continue
                 
@@ -386,8 +415,18 @@ class EloRanking:
                 result = cursor.fetchone()
                 rating_j = result[0] if result else self.INITIAL_RATING
                 
-                # Determine who won (lower position = better = win)
-                if pos_i < pos_j:
+                # Determine who won
+                # Prefer positions when available; fall back to time comparisons
+                winner_i = None
+                if pos_i is not None and pos_j is not None:
+                    winner_i = pos_i < pos_j
+                elif time_i is not None and time_j is not None:
+                    winner_i = time_i < time_j
+                else:
+                    # If we cannot compare, skip this pairing
+                    continue
+
+                if winner_i:
                     # Runner i won
                     score_i = 1.0
                     score_j = 0.0
