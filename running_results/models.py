@@ -432,8 +432,14 @@ def fix_malformed_time(time_str: str) -> Optional[str]:
     if not isinstance(time_str, str):
         return time_str
     
+    # Treat dot-separated segments as times, e.g. "1.00.24" -> "1:00:24"
+    fixed = time_str.strip()
+    if ':' not in fixed and '.' in fixed:
+        dot_parts = fixed.split('.')
+        if 2 <= len(dot_parts) <= 3 and all(part.isdigit() for part in dot_parts):
+            fixed = ':'.join(dot_parts)
+
     # Remove consecutive colons
-    fixed = time_str
     while '::' in fixed:
         fixed = fixed.replace('::', ':')
     
@@ -735,8 +741,8 @@ class RaceResultsNormalizer:
             'chip_time_minutes': ['chip.*minute', 'elapsed.*minute'],
             'gun_time_seconds': ['gun.*second', 'start.*second'],
             'gun_time_minutes': ['gun.*minute', 'start.*minute'],
-            'finish_time_seconds': ['finish.*second', 'time.*second', '^time$'],
-            'finish_time_minutes': ['finish.*minute', 'time.*minute', '^time$'],
+            'finish_time_seconds': ['finish.*second', 'time.*second', '^time$', 'final.*time'],
+            'finish_time_minutes': ['finish.*minute', 'time.*minute', '^time$', 'final.*time'],
             'age_category': ['category', 'age.*cat', 'age.*group', '^cat:?$','cat'],
             'gender': ['gender', 'sex'],
             'race_year': ['year'],
