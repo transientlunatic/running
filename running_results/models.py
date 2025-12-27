@@ -727,9 +727,16 @@ class RaceResultsNormalizer:
         Attempt to auto-detect column mappings from DataFrame columns.
         
         Uses fuzzy matching to find likely candidates for standard fields.
+        Special handling: If both Firstname and Surname columns exist,
+        don't map either to 'name' - they'll be combined during normalization.
         """
         columns = df.columns.tolist()
+        columns_lower = [str(c).lower() for c in columns]
         mapping = ColumnMapping()
+        
+        # Check if we have separate firstname and surname columns
+        has_firstname = any('firstname' in c for c in columns_lower)
+        has_surname = any('surname' in c for c in columns_lower)
         
         # Define common column name patterns for each standard field
         patterns = {
@@ -752,6 +759,10 @@ class RaceResultsNormalizer:
         import re
         
         for field, patterns_list in patterns.items():
+            # Skip mapping 'name' if we have separate firstname/surname columns
+            if field == 'name' and has_firstname and has_surname:
+                continue
+            
             for col in columns:
                 col_lower = str(col).lower()
                 for pattern in patterns_list:
@@ -783,6 +794,28 @@ class RaceResultsNormalizer:
                     elif 'DSQ' in raw_upper and 'race_status' not in data:
                         data['race_status'] = RaceStatus.DSQ
                 data[field] = self._convert_value(field, value)
+        
+        # Combine firstname and surname if both are available but name is not
+        # This handles sources with separate Firstname/Surname columns
+        if 'name' not in data or not data['name']:
+            firstname = None
+            surname = None
+            
+            # Look for firstname and surname columns in the raw row
+            for col in row.index:
+                col_lower = str(col).lower()
+                if 'firstname' in col_lower:
+                    fn = row[col]
+                    firstname = str(fn).strip() if not (isinstance(fn, float) and pd.isna(fn)) else None
+                elif 'surname' in col_lower:
+                    sn = row[col]
+                    surname = str(sn).strip() if not (isinstance(sn, float) and pd.isna(sn)) else None
+            
+            # Combine them: prefer "Surname Firstname" format
+            if surname or firstname:
+                parts = [p for p in [surname, firstname] if p]
+                if parts:
+                    data['name'] = ' '.join(parts)
         
         # Parse time fields - handle both seconds and minutes fields
         time_fields = {

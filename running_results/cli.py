@@ -306,5 +306,71 @@ def runner(ctx, runner_name, race, output):
             sys.exit(1)
 
 
+@cli.command()
+@click.option('--race', help='Specific race (None = all races)')
+@click.option('--year', type=int, help='Specific year (None = all years)')
+@click.option('--recalculate', is_flag=True, help='Recalculate all ratings from scratch')
+@click.pass_context
+def calculate_rankings(ctx, race, year, recalculate):
+    """
+    Calculate Elo rankings for runners.
+    
+    Computes Elo ratings based on race finishes. Ratings accumulate across all of
+    a runner's races in chronological order. Runners are identified by name and 
+    club combination to handle duplicates.
+    
+    Example:
+        running-results calculate-rankings
+        running-results calculate-rankings --race "Tinto Hill Race" --year 2024
+        running-results calculate-rankings --recalculate
+    """
+    db_path = ctx.obj['DB_PATH']
+    
+    with RaceResultsManager(db_path) as manager:
+        click.echo("Calculating rankings...")
+        manager.db.calculate_rankings(race_name=race, race_year=year, recalculate=recalculate)
+        click.echo("✓ Rankings calculated successfully")
+
+
+@cli.command()
+@click.option('--year', type=int, help='Specific year (None = all-time)')
+@click.option('--limit', type=int, default=20, help='Number of top runners to show')
+@click.option('--output', type=click.Path(), help='Output file (CSV)')
+@click.pass_context
+def rankings(ctx, year, limit, output):
+    """
+    Display Elo rankings for runners.
+    
+    Shows top-ranked runners based on Elo ratings.
+    
+    Example:
+        running-results rankings
+        running-results rankings --year 2024 --limit 50
+        running-results rankings --output rankings.csv
+    """
+    db_path = ctx.obj['DB_PATH']
+    
+    with RaceResultsManager(db_path) as manager:
+        df = manager.db.get_elo_rankings(year=year, limit=limit)
+        
+        if len(df) == 0:
+            click.echo("No rankings found. Run 'calculate-rankings' first.")
+            return
+        
+        if output:
+            df.to_csv(output, index=False)
+            click.echo(f"✓ Exported {len(df)} rankings to {output}")
+        else:
+            click.echo(f"\n{'Rank':<6} {'Name':<22} {'Club':<22} {'Rating':<8} {'Games':<8} {'Races':<8}")
+            click.echo("-" * 80)
+            for idx, row in df.iterrows():
+                click.echo(
+                    f"{idx+1:<6} {str(row['name'])[:22]:<22} "
+                    f"{str(row['club'] or '')[:22]:<22} "
+                    f"{row['rating']:.0f}   {int(row['games_played']):<8} {int(row.get('races_count', 0)):<8}"
+                )
+
+
 if __name__ == '__main__':
     cli(obj={})
+

@@ -20,6 +20,7 @@ from .stats import RaceStatistics, RaceComparison
 from .database import RaceResultsDatabase
 from .importers import ResultsImporter, SmartImporter
 from .manager import RaceResultsManager
+from .ranking import RunnerRegistry, EloRanking
 from .cli import cli
 from .reporting import generate_race_report, generate_comparison_report, generate_runner_report
 
@@ -65,6 +66,8 @@ __all__ = [
     'ResultsImporter',
     'SmartImporter',
     'RaceResultsManager',
+    'RunnerRegistry',
+    'EloRanking',
     'cli',
     'generate_race_report',
     'generate_comparison_report',
