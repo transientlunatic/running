@@ -23,6 +23,8 @@ dependencies = [
     "lxml>=4.6.0",
     "click>=8.0.0",
     "otter-report>=0.1.0",
+    "flask>=2.3.2",
+    "flask-cors>=4.0.0",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
