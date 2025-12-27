@@ -34,8 +34,9 @@ def cli(ctx, db):
 @click.option('--year', type=int, required=True, help='Race year')
 @click.option('--category', type=click.Choice([c.value for c in RaceCategory]), 
               default='road_race', help='Race category')
+@click.option('--default-category', help='Default age category when missing (e.g., M or F)')
 @click.pass_context
-def add(ctx, file_path, name, year, category):
+def add(ctx, file_path, name, year, category, default_category):
     """
     Add race results from a file.
     
@@ -51,8 +52,9 @@ def add(ctx, file_path, name, year, category):
             count = manager.add_from_file(
                 file_path=file_path,
                 race_name=name,
-                race_year=year,
-                race_category=category
+                year=year,
+                race_category=category,
+                default_age_category=default_category
             )
             click.echo(f"✓ Successfully added {count} results to {name} ({year})")
         except Exception as e:
@@ -67,8 +69,9 @@ def add(ctx, file_path, name, year, category):
 @click.option('--category', type=click.Choice([c.value for c in RaceCategory]),
               default='road_race', help='Race category')
 @click.option('--table-selector', help='CSS selector for results table')
+@click.option('--default-category', help='Default age category when missing (e.g., M or F)')
 @click.pass_context
-def import_url(ctx, url, name, year, category, table_selector):
+def import_url(ctx, url, name, year, category, table_selector, default_category):
     """
     Import race results from a URL.
     
@@ -84,9 +87,10 @@ def import_url(ctx, url, name, year, category, table_selector):
             count = manager.add_from_url(
                 url=url,
                 race_name=name,
-                race_year=year,
+                year=year,
                 race_category=category,
-                table_selector=table_selector
+                selector=table_selector,
+                default_age_category=default_category
             )
             click.echo(f"✓ Successfully imported {count} results from {url}")
         except Exception as e:

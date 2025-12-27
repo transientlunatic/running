@@ -133,6 +133,14 @@ class NormalizedRaceResult(BaseModel):
     class Config:
         use_enum_values = True
     
+    @field_validator('position_overall', 'position_gender', 'position_category', mode='before')
+    @classmethod
+    def validate_position(cls, v):
+        """Clean up position fields - convert NaN to None."""
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return None
+        return v
+    
     @field_validator('race_status', mode='before')
     @classmethod
     def parse_race_status(cls, v):
@@ -590,7 +598,9 @@ class RaceResultsNormalizer:
         race_year: Optional[int] = None,
         race_category: Optional[RaceCategory] = None,
         strict: bool = False,
-        auto_detect: bool = True
+        auto_detect: bool = True,
+        default_age_category: Optional[str] = None,
+        default_gender: Optional[str] = None
     ):
         """
         Initialize the normalizer.
@@ -611,6 +621,8 @@ class RaceResultsNormalizer:
         self.race_category = race_category
         self.strict = strict
         self.auto_detect = auto_detect
+        self.default_age_category = default_age_category
+        self.default_gender = default_gender
     
     def normalize(
         self,
@@ -643,10 +655,66 @@ class RaceResultsNormalizer:
             result = self._normalize_row(row, mapping_dict)
             results.append(result)
         
+        # Auto-calculate position_gender and position_category if not already set
+        results = self._calculate_positions(results)
+        
         if return_dataframe:
             return self._results_to_dataframe(results)
         
         return results
+    
+    def _calculate_positions(self, results: List[NormalizedRaceResult]) -> List[NormalizedRaceResult]:
+        """
+        Calculate position_gender and position_category for results that don't have them.
+        
+        Groups by gender and age_category, sorting by position_overall or finish_time_seconds.
+        """
+        if not results:
+            return results
+        
+        # Convert to dicts for easier mutation
+        results_data = [r.model_dump() for r in results]
+        
+        # Filter to only finished results for position calculations
+        finished_indices = [i for i, r in enumerate(results_data) 
+                           if r.get('race_status') == RaceStatus.FINISHED.value]
+        
+        # Sort by position_overall if available, else by finish_time_seconds
+        def sort_key(idx):
+            r = results_data[idx]
+            if r.get('position_overall') is not None:
+                return (0, r['position_overall'])
+            elif r.get('finish_time_seconds') is not None:
+                return (1, r['finish_time_seconds'])
+            else:
+                return (2, 0)
+        
+        finished_sorted = sorted(finished_indices, key=sort_key)
+        
+        # Calculate position_gender
+        gender_positions = {}
+        for idx in finished_sorted:
+            r = results_data[idx]
+            if r.get('position_gender') is None and r.get('gender'):
+                gender = r['gender']
+                if gender not in gender_positions:
+                    gender_positions[gender] = 0
+                gender_positions[gender] += 1
+                r['position_gender'] = gender_positions[gender]
+        
+        # Calculate position_category
+        category_positions = {}
+        for idx in finished_sorted:
+            r = results_data[idx]
+            if r.get('position_category') is None and r.get('age_category'):
+                category = r['age_category']
+                if category not in category_positions:
+                    category_positions[category] = 0
+                category_positions[category] += 1
+                r['position_category'] = category_positions[category]
+        
+        # Convert back to NormalizedRaceResult objects
+        return [NormalizedRaceResult(**data) for data in results_data]
     
     def _auto_detect_columns(self, df: pd.DataFrame) -> Optional[ColumnMapping]:
         """
@@ -669,7 +737,7 @@ class RaceResultsNormalizer:
             'gun_time_minutes': ['gun.*minute', 'start.*minute'],
             'finish_time_seconds': ['finish.*second', 'time.*second', '^time$'],
             'finish_time_minutes': ['finish.*minute', 'time.*minute', '^time$'],
-            'age_category': ['category', 'age.*cat', 'age.*group'],
+            'age_category': ['category', 'age.*cat', 'age.*group', '^cat:?$','cat'],
             'gender': ['gender', 'sex'],
             'race_year': ['year'],
             'race_status': ['status', 'result', 'dnf', 'dns'],
@@ -679,7 +747,7 @@ class RaceResultsNormalizer:
         
         for field, patterns_list in patterns.items():
             for col in columns:
-                col_lower = col.lower()
+                col_lower = str(col).lower()
                 for pattern in patterns_list:
                     if re.search(pattern, col_lower):
                         setattr(mapping, field, col)
@@ -762,6 +830,33 @@ class RaceResultsNormalizer:
             # Update gender if it was extracted from category and not already set
             if cat_result['gender'] and not data.get('gender'):
                 data['gender'] = cat_result['gender']
+
+        # If no category provided, default to senior male
+        # - If gender is unknown or missing, set gender='M' and age_category='M'
+        # - If gender is explicitly male, set age_category='M'
+        def _is_missing(val):
+            return val is None or (isinstance(val, float) and pd.isna(val)) or (isinstance(val, str) and val.strip() == '')
+
+        if _is_missing(data.get('age_category')):
+            default_cat = (self.default_age_category or 'M')
+            # Normalize default_cat formatting
+            default_cat = str(default_cat).strip()
+            if _is_missing(data.get('gender')):
+                # Prefer explicit default gender if provided, else infer from category
+                if self.default_gender:
+                    data['gender'] = str(self.default_gender).strip().upper()
+                else:
+                    first = default_cat[:1].upper() if default_cat else 'M'
+                    if first in ['M', 'F', 'N']:
+                        data['gender'] = first
+                    else:
+                        data['gender'] = Gender.MALE.value
+                data['age_category'] = default_cat or 'M'
+            else:
+                if str(data.get('gender')).upper() == Gender.MALE.value and not default_cat:
+                    data['age_category'] = 'M'
+                else:
+                    data['age_category'] = default_cat or data.get('age_category')
         
         # Add metadata
         if self.race_name:
@@ -788,6 +883,14 @@ class RaceResultsNormalizer:
     
     def _convert_value(self, field: str, value: Any) -> Any:
         """Convert a value to the appropriate type for the field."""
+        # Some sources yield duplicate column names, giving pandas.Series cells.
+        if isinstance(value, pd.Series):
+            non_null = value.dropna()
+            value = non_null.iloc[0] if len(non_null) else None
+        elif isinstance(value, (list, tuple)):
+            non_null = [v for v in value if not (isinstance(v, float) and pd.isna(v))]
+            value = non_null[0] if non_null else None
+
         if value is None or (isinstance(value, float) and pd.isna(value)):
             return None
         

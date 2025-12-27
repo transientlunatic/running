@@ -317,7 +317,12 @@ class RaceResultsDatabase:
         # Ensure rows with NULL position (e.g., DNF) are ordered after finishers
         query += ' ORDER BY e.race_year, (res.position_overall IS NULL), res.position_overall'
         
-        return pd.read_sql_query(query, self.conn, params=params)
+        df = pd.read_sql_query(query, self.conn, params=params)
+        # Cast position columns to nullable integers to avoid float display
+        for col in ['position_overall', 'position_gender', 'position_category']:
+            if col in df.columns:
+                df[col] = df[col].astype('Int64')
+        return df
     
     def get_races(self) -> pd.DataFrame:
         """Get list of all races in database."""
