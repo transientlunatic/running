@@ -34,7 +34,8 @@ class APIConfig:
     
     # Authentication - API keys should be set via environment or config file
     # Multiple keys can be added to support different clients
-    API_KEYS: Set[str] = set(os.environ.get('RACE_API_KEYS', '').split(',')) if os.environ.get('RACE_API_KEYS') else set()
+    _api_keys_env = os.environ.get('RACE_API_KEYS', '')
+    API_KEYS: Set[str] = set(key.strip() for key in _api_keys_env.split(',') if key.strip()) if _api_keys_env else set()
     
     # CORS settings
     CORS_ENABLED: bool = os.environ.get('RACE_API_CORS', 'true').lower() == 'true'
@@ -64,20 +65,35 @@ class APIConfig:
             
         Returns:
             APIConfig instance
+            
+        Raises:
+            ValueError: If config_path contains path traversal or is outside allowed directories
         """
         config = cls()
         
         if not os.path.exists(config_path):
             return config
         
+        # Security: Validate config path to prevent path traversal attacks
+        abs_config_path = os.path.abspath(config_path)
+        
+        # Ensure the config file has a .py extension
+        if not abs_config_path.endswith('.py'):
+            raise ValueError("Config file must have .py extension")
+        
+        # Ensure no path traversal attempts
+        if '..' in config_path or config_path.startswith('/'):
+            # Only allow relative paths in current directory or subdirectories
+            raise ValueError("Config path must be a relative path without '..' components")
+        
         # Load config file as Python module
         import importlib.util
-        spec = importlib.util.spec_from_file_location("config", config_path)
+        spec = importlib.util.spec_from_file_location("config", abs_config_path)
         if spec and spec.loader:
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             
-            # Update config from module
+            # Update config from module - only uppercase attributes
             for key in dir(module):
                 if key.isupper() and hasattr(config, key):
                     setattr(config, key, getattr(module, key))

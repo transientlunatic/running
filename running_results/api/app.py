@@ -345,7 +345,7 @@ def register_routes(app: Flask) -> None:
                 'runner_name': name,
                 'results': results_df.to_dict('records'),
                 'count': len(results_df),
-                'races': results_df['race_name'].unique().tolist() if 'race_name' in results_df.columns else []
+                'races': results_df['race_name'].unique().tolist()
             })
             
         except Exception as e:
@@ -428,10 +428,17 @@ def register_routes(app: Flask) -> None:
                     )
                 else:
                     # Assume results are already in standard format
-                    normalized_results = [
-                        NormalizedRaceResult(**result)
-                        for result in results_data
-                    ]
+                    # Validate each result using Pydantic
+                    normalized_results = []
+                    for i, result in enumerate(results_data):
+                        try:
+                            normalized_results.append(NormalizedRaceResult(**result))
+                        except Exception as e:
+                            return jsonify({
+                                'error': f'Invalid result data at index {i}',
+                                'message': str(e),
+                                'result': result
+                            }), 400
             except Exception as e:
                 return jsonify({
                     'error': 'Invalid result data',
@@ -505,6 +512,7 @@ application = get_app()
 
 
 if __name__ == '__main__':
-    # Development server
+    # Development server - DO NOT use in production!
+    # For production, use a WSGI server like Gunicorn or FastCGI
     app = create_app()
     app.run(debug=True, host='0.0.0.0', port=5000)

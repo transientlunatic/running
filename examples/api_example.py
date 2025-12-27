@@ -125,6 +125,8 @@ def main():
     print("\nPress Ctrl+C to stop the server\n")
     
     # Run the Flask development server
+    # WARNING: This is for development/demo purposes only!
+    # DO NOT use in production. Use a production WSGI server instead.
     app.run(debug=True, host='0.0.0.0', port=5000)
 
 

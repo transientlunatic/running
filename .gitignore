@@ -67,3 +67,11 @@ docs/_autosummary/
 coverage.xml
 htmlcov/
 .pytest_cache/
+
+# Database files (except in examples directory with specific names)
+*.db
+!example_race_results.db
+
+# API configuration (sensitive)
+api_config.py
+.env
