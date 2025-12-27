@@ -164,7 +164,7 @@ See the [API Documentation](running_results/api/API_DOCUMENTATION.md) for comple
 
 ## Requirements
 
-- Python 3.7+
+- Python 3.10+
 - pandas
 - numpy
 - matplotlib

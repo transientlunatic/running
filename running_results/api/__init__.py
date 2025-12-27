@@ -15,4 +15,4 @@ from .app import create_app, get_app
 from .auth import require_api_key
 from .config import APIConfig
 
-__all__ = ['create_app', 'get_app', 'require_api_key', 'APIConfig']
+__all__ = ["create_app", "get_app", "require_api_key", "APIConfig"]
