@@ -98,11 +98,6 @@ class RaceResultsManager:
             ... )
             >>> print(f"Added {count} results")
         """
-        # Reconcile year from kwargs if provided to avoid duplicate arguments
-        kw_year = kwargs.pop("race_year", None)
-        if year is None:
-            year = kw_year
-
         # Prepare mapping: support reversed dict {source_col: normalized_field}
         mapping_to_use = None
         if column_mapping:
