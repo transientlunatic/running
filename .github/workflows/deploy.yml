@@ -51,7 +51,7 @@ jobs:
             cd "$DEPLOY_PATH"
             
             # Activate virtual environment
-            source venv/bin/activate
+            source environment/bin/activate
             
             # Pull latest code
             REPO_PATH="$DEPLOY_PATH/running"
