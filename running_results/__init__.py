@@ -13,15 +13,29 @@ Modules:
 
 __version__ = "0.1.0"
 
-from .data import RaceDataFetcher, CSVRaceData, PaginatedRaceDataFetcher, MultiYearRaceData
-from .transform import TimeConverter, NameParser, ColumnStandardizer, RaceDataTransformer
+from .data import (
+    RaceDataFetcher,
+    CSVRaceData,
+    PaginatedRaceDataFetcher,
+    MultiYearRaceData,
+)
+from .transform import (
+    TimeConverter,
+    NameParser,
+    ColumnStandardizer,
+    RaceDataTransformer,
+)
 from .plotting import KentigernPlot, RacePlotter
 from .stats import RaceStatistics, RaceComparison
 from .database import RaceResultsDatabase
 from .importers import ResultsImporter, SmartImporter
 from .manager import RaceResultsManager
 from .cli import cli
-from .reporting import generate_race_report, generate_comparison_report, generate_runner_report
+from .reporting import (
+    generate_race_report,
+    generate_comparison_report,
+    generate_runner_report,
+)
 from .api import create_app, get_app, APIConfig
 
 from .models import (
@@ -39,38 +53,38 @@ from .models import (
 )
 
 __all__ = [
-    'RaceDataFetcher',
-    'CSVRaceData',
-    'PaginatedRaceDataFetcher',
-    'MultiYearRaceData',
-    'TimeConverter',
-    'NameParser',
-    'ColumnStandardizer',
-    'RaceDataTransformer',
-    'KentigernPlot',
-    'RacePlotter',
-    'RaceStatistics',
-    'RaceComparison',
-    'NormalizedRaceResult',
-    'ColumnMapping',
-    'TimeParser',
-    'RaceResultsNormalizer',
-    'RaceCategory',
-    'Gender',
-    'RaceStatus',
-    'normalize_race_results',
-    'fix_malformed_time',
-    'normalize_club_name',
-    'parse_age_category',
-    'RaceResultsDatabase',
-    'ResultsImporter',
-    'SmartImporter',
-    'RaceResultsManager',
-    'cli',
-    'generate_race_report',
-    'generate_comparison_report',
-    'generate_runner_report',
-    'create_app',
-    'get_app',
-    'APIConfig',
+    "RaceDataFetcher",
+    "CSVRaceData",
+    "PaginatedRaceDataFetcher",
+    "MultiYearRaceData",
+    "TimeConverter",
+    "NameParser",
+    "ColumnStandardizer",
+    "RaceDataTransformer",
+    "KentigernPlot",
+    "RacePlotter",
+    "RaceStatistics",
+    "RaceComparison",
+    "NormalizedRaceResult",
+    "ColumnMapping",
+    "TimeParser",
+    "RaceResultsNormalizer",
+    "RaceCategory",
+    "Gender",
+    "RaceStatus",
+    "normalize_race_results",
+    "fix_malformed_time",
+    "normalize_club_name",
+    "parse_age_category",
+    "RaceResultsDatabase",
+    "ResultsImporter",
+    "SmartImporter",
+    "RaceResultsManager",
+    "cli",
+    "generate_race_report",
+    "generate_comparison_report",
+    "generate_runner_report",
+    "create_app",
+    "get_app",
+    "APIConfig",
 ]

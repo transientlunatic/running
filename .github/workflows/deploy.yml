@@ -30,11 +30,6 @@ jobs:
           python-version: '3.11'  # Using 3.11 for deployment validation; actual server Python version may vary
           cache: 'pip'
 
-      - name: Install dependencies locally
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-
       - name: Deploy to Dreamhost
         uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262  # v1.0.3
         with:
@@ -51,10 +46,11 @@ jobs:
             cd "$DEPLOY_PATH"
             
             # Activate virtual environment
-            source environment/bin/activate
+            source venv/bin/activate
             
             # Pull latest code
-            REPO_PATH="$DEPLOY_PATH/running"
+            REPO_NAME="$(basename "${{ github.repository }}")"
+            REPO_PATH="$DEPLOY_PATH/$REPO_NAME"
             if [ -d "$REPO_PATH" ]; then
               cd "$REPO_PATH"
               git fetch origin
@@ -67,8 +63,11 @@ jobs:
                 echo "Error: Neither main nor master branch found"
                 exit 1
               fi
+              echo "Deployed commit: $(git rev-parse HEAD)"
             else
-              git clone https://github.com/${{ github.repository }}.git "$REPO_PATH"
+              git clone -b "${{ github.ref_name }}" --single-branch https://github.com/${{ github.repository }}.git "$REPO_PATH"
+              cd "$REPO_PATH"
+              echo "Deployed commit: $(git rev-parse HEAD)"
             fi
             
             # Install/upgrade the package
