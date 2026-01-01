@@ -295,6 +295,89 @@ HTTP Status: 401
 ```
 HTTP Status: 403
 
+### GET /api/rankings
+
+Get Elo rankings for runners.
+
+**Query Parameters:**
+- `year` (integer, optional): Get rankings as of specific year
+- `limit` (integer, optional): Maximum number of rankings to return
+- `min_games` (integer, optional): Minimum number of races to include (default: 1)
+
+**Example Request:**
+```
+GET /api/rankings?year=2024&limit=50&min_games=5
+```
+
+**Example Response:**
+```json
+{
+  "year": 2024,
+  "limit": 50,
+  "min_games": 5,
+  "count": 50,
+  "rankings": [
+    {
+      "runner_id": 123,
+      "name": "John Smith",
+      "club": "Running Club",
+      "rating": 1650.5,
+      "games_played": 15,
+      "games_won": 8,
+      "games_dnf": 0,
+      "first_seen_year": 2020,
+      "last_seen_year": 2024
+    },
+    {
+      "runner_id": 456,
+      "name": "Jane Doe",
+      "club": "Athletics Club",
+      "rating": 1625.2,
+      "games_played": 12,
+      "games_won": 6,
+      "games_dnf": 1,
+      "first_seen_year": 2019,
+      "last_seen_year": 2024
+    }
+  ]
+}
+```
+
+### POST /api/rankings/calculate
+
+Calculate or recalculate Elo rankings. **Requires API key authentication.**
+
+**Headers:**
+```
+Content-Type: application/json
+X-API-Key: your-api-key-here
+```
+
+**Request Body:**
+```json
+{
+  "race_name": "Tinto Hill Race",
+  "race_year": 2024,
+  "recalculate": false
+}
+```
+
+All fields are optional:
+- `race_name` (string): Calculate for specific race only
+- `race_year` (integer): Calculate for specific year only  
+- `recalculate` (boolean): If true, recalculate all from scratch (default: false)
+
+**Example Response:**
+```json
+{
+  "status": "success",
+  "message": "Rankings calculated successfully",
+  "race_name": "Tinto Hill Race",
+  "race_year": 2024,
+  "recalculated": false
+}
+```
+
 ## Error Responses
 
 All endpoints may return error responses with appropriate HTTP status codes:

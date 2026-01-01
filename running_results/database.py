@@ -18,24 +18,24 @@ from .models import NormalizedRaceResult, RaceCategory
 class RaceResultsDatabase:
     """
     SQLite database for storing and querying race results.
-    
+
     Features:
     - Store normalized race results persistently
     - Track races across multiple years
     - Query by race, year, runner, club
     - Export to DataFrame for analysis
-    
+
     Example:
         >>> db = RaceResultsDatabase('race_results.db')
         >>> db.add_results(normalized_results, race_name='Tinto', race_year=2024)
         >>> tinto_all = db.get_race_results('Tinto')
         >>> tinto_2024 = db.get_race_results('Tinto', year=2024)
     """
-    
-    def __init__(self, db_path: str = 'race_results.db'):
+
+    def __init__(self, db_path: str = "race_results.db"):
         """
         Initialize database connection.
-        
+
         Args:
             db_path: Path to SQLite database file
         """
@@ -43,13 +43,14 @@ class RaceResultsDatabase:
         self.db_path = str(db_path)
         self.conn = sqlite3.connect(self.db_path)
         self._create_tables()
-    
+
     def _create_tables(self):
         """Create database schema if it doesn't exist."""
         cursor = self.conn.cursor()
-        
+
         # Races table - tracks unique races
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS races (
                 race_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 race_name TEXT NOT NULL,
@@ -57,10 +58,12 @@ class RaceResultsDatabase:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(race_name)
             )
-        ''')
-        
+        """
+        )
+
         # Race editions table - specific year/date for each race
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS race_editions (
                 edition_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 race_id INTEGER NOT NULL,
@@ -72,10 +75,12 @@ class RaceResultsDatabase:
                 FOREIGN KEY (race_id) REFERENCES races(race_id),
                 UNIQUE(race_id, race_year)
             )
-        ''')
-        
+        """
+        )
+
         # Results table - individual runner results
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS results (
                 result_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 edition_id INTEGER NOT NULL,
@@ -97,40 +102,43 @@ class RaceResultsDatabase:
                 metadata TEXT,
                 FOREIGN KEY (edition_id) REFERENCES race_editions(edition_id)
             )
-        ''')
-        
+        """
+        )
+
         # Create indexes for common queries
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_results_name ON results(name)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_results_club ON results(club)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_race_editions_year ON race_editions(race_year)')
-        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_results_name ON results(name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_results_club ON results(club)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_race_editions_year ON race_editions(race_year)"
+        )
+
         self.conn.commit()
-    
+
     def add_race(self, race_name: str, race_category: Optional[str] = None) -> int:
         """
         Add or get a race.
-        
+
         Args:
             race_name: Name of the race
             race_category: Category (e.g., 'marathon', 'fell_race')
-            
+
         Returns:
             race_id
         """
         cursor = self.conn.cursor()
-        
+
         # Try to insert, or get existing
         cursor.execute(
-            'INSERT OR IGNORE INTO races (race_name, race_category) VALUES (?, ?)',
-            (race_name, race_category)
+            "INSERT OR IGNORE INTO races (race_name, race_category) VALUES (?, ?)",
+            (race_name, race_category),
         )
-        
-        cursor.execute('SELECT race_id FROM races WHERE race_name = ?', (race_name,))
+
+        cursor.execute("SELECT race_id FROM races WHERE race_name = ?", (race_name,))
         result = cursor.fetchone()
         self.conn.commit()
-        
+
         return result[0]
-    
+
     def add_race_edition(
         self,
         race_id: int,
@@ -144,7 +152,7 @@ class RaceResultsDatabase:
     ) -> int:
         """
         Add a race edition (specific year/instance).
-        
+
         Args:
             race_id: ID of the parent race
             race_year: Year of the race
@@ -153,7 +161,7 @@ class RaceResultsDatabase:
             source_file: File where results were imported from
             year: Alias for race_year to match test expectations
             metadata: Optional edition-level metadata (accepted but not stored)
-            
+
         Returns:
             edition_id
         """
@@ -162,18 +170,21 @@ class RaceResultsDatabase:
         # Allow passing `year` as an alias for `race_year`
         if year is not None and race_year is None:
             race_year = year
-        
-        cursor.execute('''
+
+        cursor.execute(
+            """
             INSERT OR REPLACE INTO race_editions 
             (race_id, race_year, race_date, source_url, source_file)
             VALUES (?, ?, ?, ?, ?)
-        ''', (race_id, race_year, race_date, source_url, source_file))
-        
+        """,
+            (race_id, race_year, race_date, source_url, source_file),
+        )
+
         edition_id = cursor.lastrowid
         self.conn.commit()
-        
+
         return edition_id
-    
+
     def add_results(
         self,
         results: List[NormalizedRaceResult],
@@ -186,7 +197,7 @@ class RaceResultsDatabase:
     ) -> int:
         """
         Add race results to the database.
-        
+
         Args:
             results: List of NormalizedRaceResult objects
             edition_id: Existing race edition ID to attach results to (preferred)
@@ -195,7 +206,7 @@ class RaceResultsDatabase:
             race_category: Race category (used if creating race)
             source_url: URL where results came from (stored on edition if created)
             source_file: File where results came from (stored on edition if created)
-            
+
         Returns:
             Number of results added
         """
@@ -207,18 +218,19 @@ class RaceResultsDatabase:
             edition_id = self.add_race_edition(
                 race_id, race_year, None, source_url, source_file
             )
-        
+
         # Add results
         cursor = self.conn.cursor()
         count = 0
-        
+
         for result in results:
             # Convert metadata dict to JSON if present
             metadata_json = None
-            if hasattr(result, 'metadata') and result.metadata:
+            if hasattr(result, "metadata") and result.metadata:
                 metadata_json = json.dumps(result.metadata)
-            
-            cursor.execute('''
+
+            cursor.execute(
+                """
                 INSERT INTO results (
                     edition_id, position_overall, position_gender, position_category,
                     name, bib_number, gender, age_category, club, race_status,
@@ -226,50 +238,52 @@ class RaceResultsDatabase:
                     chip_time_seconds, chip_time_minutes,
                     gun_time_seconds, gun_time_minutes, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                edition_id,
-                result.position_overall,
-                result.position_gender,
-                result.position_category,
-                result.name,
-                result.bib_number,
-                result.gender,
-                result.age_category,
-                result.club,
-                result.race_status,
-                result.finish_time_seconds,
-                result.finish_time_minutes,
-                result.chip_time_seconds,
-                result.chip_time_minutes,
-                result.gun_time_seconds,
-                result.gun_time_minutes,
-                metadata_json
-            ))
+            """,
+                (
+                    edition_id,
+                    result.position_overall,
+                    result.position_gender,
+                    result.position_category,
+                    result.name,
+                    result.bib_number,
+                    result.gender,
+                    result.age_category,
+                    result.club,
+                    result.race_status,
+                    result.finish_time_seconds,
+                    result.finish_time_minutes,
+                    result.chip_time_seconds,
+                    result.chip_time_minutes,
+                    result.gun_time_seconds,
+                    result.gun_time_minutes,
+                    metadata_json,
+                ),
+            )
             count += 1
-        
+
         self.conn.commit()
         return count
-    
+
     def get_race_results(
         self,
         race_name: Optional[str] = None,
         year: Optional[int] = None,
         runner_name: Optional[str] = None,
-        club: Optional[str] = None
+        club: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Query race results.
-        
+
         Args:
             race_name: Filter by race name
             year: Filter by year
             runner_name: Filter by runner name (partial match)
             club: Filter by club (partial match)
-            
+
         Returns:
             DataFrame with results
         """
-        query = '''
+        query = """
             SELECT 
                 r.race_name,
                 e.race_year,
@@ -294,26 +308,26 @@ class RaceResultsDatabase:
             JOIN race_editions e ON res.edition_id = e.edition_id
             JOIN races r ON e.race_id = r.race_id
             WHERE 1=1
-        '''
-        
+        """
+
         params = []
-        
+
         if race_name:
-            query += ' AND r.race_name = ?'
+            query += " AND r.race_name = ?"
             params.append(race_name)
-        
+
         if year:
-            query += ' AND e.race_year = ?'
+            query += " AND e.race_year = ?"
             params.append(year)
-        
+
         if runner_name:
-            query += ' AND res.name LIKE ?'
-            params.append(f'%{runner_name}%')
-        
+            query += " AND res.name LIKE ?"
+            params.append(f"%{runner_name}%")
+
         if club:
-            query += ' AND res.club LIKE ?'
-            params.append(f'%{club}%')
-        
+            query += " AND res.club LIKE ?"
+            params.append(f"%{club}%")
+
         # Ensure rows with NULL position (e.g., DNF) are ordered after finishers
         query += ' ORDER BY e.race_year, (res.position_overall IS NULL), res.position_overall'
         
@@ -326,7 +340,7 @@ class RaceResultsDatabase:
     
     def get_races(self) -> pd.DataFrame:
         """Get list of all races in database."""
-        query = '''
+        query = """
             SELECT 
                 r.race_name,
                 r.race_category,
@@ -339,17 +353,19 @@ class RaceResultsDatabase:
             LEFT JOIN results res ON e.edition_id = res.edition_id
             GROUP BY r.race_id, r.race_name, r.race_category
             ORDER BY r.race_name
-        '''
+        """
         return pd.read_sql_query(query, self.conn)
-    
-    def get_runner_history(self, runner_name: str, race_name: Optional[str] = None) -> pd.DataFrame:
+
+    def get_runner_history(
+        self, runner_name: str, race_name: Optional[str] = None
+    ) -> pd.DataFrame:
         """
         Get a runner's results history.
-        
+
         Args:
             runner_name: Runner name (partial match)
             race_name: Optional filter by specific race
-            
+
         Returns:
             DataFrame with runner's results over time
         """
@@ -388,9 +404,9 @@ class RaceResultsDatabase:
     def close(self):
         """Close database connection."""
         self.conn.close()
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()

@@ -12,6 +12,7 @@ from typing import Optional
 import pandas as pd
 from datetime import datetime
 
+from .. import __version__
 from ..database import RaceResultsDatabase
 from ..models import NormalizedRaceResult, normalize_race_results, ColumnMapping
 from .config import APIConfig
@@ -99,7 +100,7 @@ def register_routes(app: Flask) -> None:
         return jsonify(
             {
                 "name": "Race Results API",
-                "version": "1.0.0",
+                "version": __version__,
                 "description": "RESTful API for managing and querying running race results",
                 "endpoints": {
                     "GET /api/races": "List all races",
@@ -107,7 +108,9 @@ def register_routes(app: Flask) -> None:
                     "GET /api/races/<race_name>/results": "Get race results",
                     "GET /api/races/<race_name>/years/<year>": "Get results for specific year",
                     "GET /api/runner/<name>": "Get runner history",
+                    "GET /api/rankings": "Get Elo rankings for runners",
                     "POST /api/results": "Add new results (requires API key)",
+                    "POST /api/rankings/calculate": "Calculate Elo rankings (requires API key)",
                     "GET /api/health": "Health check endpoint",
                 },
                 "authentication": "API key required for POST endpoints (X-API-Key header or api_key query param)",
@@ -383,6 +386,102 @@ def register_routes(app: Flask) -> None:
         except Exception as e:
             logger.error(f"Error getting runner history: {str(e)}", exc_info=True)
             return jsonify({"error": "Failed to retrieve runner history"}), 500
+
+    @app.route("/api/rankings")
+    def get_rankings():
+        """
+        Get Elo rankings for runners.
+
+        Query parameters:
+            - year: Optional year to get rankings for (returns ratings as of that year)
+            - limit: Maximum number of rankings to return
+            - min_games: Minimum number of races to include (default: 1)
+
+        Returns:
+            JSON array of rankings with runner details and ratings
+
+        Example:
+            GET /api/rankings?year=2024&limit=50
+        """
+        try:
+            db = get_db()
+
+            # Get query parameters
+            year = request.args.get("year", type=int)
+            limit = request.args.get("limit", type=int)
+            min_games = request.args.get("min_games", type=int, default=1)
+
+            # Get rankings
+            rankings_df = db.get_elo_rankings(year=year, limit=limit)
+
+            # Filter by minimum games if specified
+            if min_games > 1:
+                rankings_df = rankings_df[rankings_df["games_played"] >= min_games]
+
+            # Convert to JSON-serializable format
+            rankings = rankings_df.to_dict(orient="records")
+
+            return jsonify(
+                {
+                    "year": year,
+                    "limit": limit,
+                    "min_games": min_games,
+                    "count": len(rankings),
+                    "rankings": rankings,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting rankings: {str(e)}", exc_info=True)
+            return jsonify({"error": "Failed to retrieve rankings"}), 500
+
+    @app.route("/api/rankings/calculate", methods=["POST"])
+    @require_api_key
+    def calculate_rankings():
+        """
+        Calculate or recalculate Elo rankings.
+
+        Requires API key authentication.
+
+        Request body (JSON, all optional):
+            - race_name: Calculate for specific race only
+            - race_year: Calculate for specific year only
+            - recalculate: If true, recalculate all from scratch (default: false)
+
+        Returns:
+            JSON object with status
+
+        Example:
+            POST /api/rankings/calculate
+            Headers: X-API-Key: your-api-key-here
+            Body: {"recalculate": true}
+        """
+        try:
+            db = get_db()
+            data = request.get_json() or {}
+
+            race_name = data.get("race_name")
+            race_year = data.get("race_year")
+            recalculate = data.get("recalculate", False)
+
+            # Calculate rankings
+            db.calculate_rankings(
+                race_name=race_name, race_year=race_year, recalculate=recalculate
+            )
+
+            return jsonify(
+                {
+                    "status": "success",
+                    "message": "Rankings calculated successfully",
+                    "race_name": race_name,
+                    "race_year": race_year,
+                    "recalculated": recalculate,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error calculating rankings: {str(e)}", exc_info=True)
+            return jsonify({"error": "Failed to calculate rankings"}), 500
 
     @app.route("/api/results", methods=["POST"])
     @require_api_key
