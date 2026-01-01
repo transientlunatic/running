@@ -25,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.11'  # Using 3.11 for deployment validation; actual server Python version may vary
           cache: 'pip'
 
       - name: Install dependencies locally
@@ -34,7 +34,7 @@ jobs:
           pip install -e .
 
       - name: Deploy to Dreamhost
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262  # v1.0.3
         with:
           host: ${{ secrets.DREAMHOST_HOST }}
           username: ${{ secrets.DREAMHOST_USERNAME }}
@@ -45,30 +45,30 @@ jobs:
             set -e
             
             # Navigate to deployment directory
-            cd ${{ secrets.DREAMHOST_DEPLOY_PATH }}
+            DEPLOY_PATH="${{ secrets.DREAMHOST_DEPLOY_PATH }}"
+            cd "$DEPLOY_PATH"
             
             # Activate virtual environment
             source venv/bin/activate
             
             # Pull latest code
-            if [ -d "running" ]; then
-              cd running
+            REPO_PATH="$DEPLOY_PATH/running"
+            if [ -d "$REPO_PATH" ]; then
+              cd "$REPO_PATH"
               git fetch origin
               git reset --hard origin/main || git reset --hard origin/master
-              cd ..
             else
-              git clone https://github.com/transientlunatic/running.git
-              cd running
-              cd ..
+              git clone https://github.com/transientlunatic/running.git "$REPO_PATH"
             fi
             
             # Install/upgrade the package
-            pip install --upgrade ./running
+            pip install --upgrade "$REPO_PATH"
             
             # Install FastCGI support if not already installed
             pip install flup
             
             # Restart FastCGI by touching the script
+            cd "$DEPLOY_PATH"
             if [ -f "api.fcgi" ]; then
               touch api.fcgi
             fi
@@ -81,8 +81,9 @@ jobs:
           sleep 10
           
           # Check if health endpoint is accessible
-          if [ -n "${{ secrets.DREAMHOST_HEALTH_URL }}" ]; then
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.DREAMHOST_HEALTH_URL }})
+          HEALTH_URL="${{ secrets.DREAMHOST_HEALTH_URL }}"
+          if [ -n "$HEALTH_URL" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL")
             echo "Health check returned: $HTTP_CODE"
             
             if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
