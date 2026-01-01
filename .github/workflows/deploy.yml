@@ -17,6 +17,8 @@ jobs:
   deploy:
     name: Deploy to Dreamhost via SSH
     runs-on: ubuntu-latest
+    permissions:
+      contents: read  # Required to checkout code
     
     steps:
       - name: Checkout code
