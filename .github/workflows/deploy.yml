@@ -56,9 +56,17 @@ jobs:
             if [ -d "$REPO_PATH" ]; then
               cd "$REPO_PATH"
               git fetch origin
-              git reset --hard origin/main || git reset --hard origin/master
+              # Try main branch first, fall back to master
+              if git rev-parse --verify origin/main >/dev/null 2>&1; then
+                git reset --hard origin/main
+              elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+                git reset --hard origin/master
+              else
+                echo "Error: Neither main nor master branch found"
+                exit 1
+              fi
             else
-              git clone https://github.com/transientlunatic/running.git "$REPO_PATH"
+              git clone https://github.com/${{ github.repository }}.git "$REPO_PATH"
             fi
             
             # Install/upgrade the package
@@ -83,7 +91,7 @@ jobs:
           # Check if health endpoint is accessible
           HEALTH_URL="${{ secrets.DREAMHOST_HEALTH_URL }}"
           if [ -n "$HEALTH_URL" ]; then
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL")
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$HEALTH_URL")
             echo "Health check returned: $HTTP_CODE"
             
             if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
