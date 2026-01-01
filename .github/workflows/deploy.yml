@@ -1,0 +1,106 @@
+name: Deploy to Dreamhost
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'running_results/**'
+      - 'requirements.txt'
+      - 'pyproject.toml'
+      - 'setup.py'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Dreamhost via SSH
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies locally
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Deploy to Dreamhost
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DREAMHOST_HOST }}
+          username: ${{ secrets.DREAMHOST_USERNAME }}
+          key: ${{ secrets.DREAMHOST_SSH_KEY }}
+          port: ${{ secrets.DREAMHOST_PORT }}
+          script_stop: true
+          script: |
+            set -e
+            
+            # Navigate to deployment directory
+            cd ${{ secrets.DREAMHOST_DEPLOY_PATH }}
+            
+            # Activate virtual environment
+            source venv/bin/activate
+            
+            # Pull latest code
+            if [ -d "running" ]; then
+              cd running
+              git fetch origin
+              git reset --hard origin/main || git reset --hard origin/master
+              cd ..
+            else
+              git clone https://github.com/transientlunatic/running.git
+              cd running
+              cd ..
+            fi
+            
+            # Install/upgrade the package
+            pip install --upgrade ./running
+            
+            # Install FastCGI support if not already installed
+            pip install flup
+            
+            # Restart FastCGI by touching the script
+            if [ -f "api.fcgi" ]; then
+              touch api.fcgi
+            fi
+            
+            echo "Deployment completed successfully"
+
+      - name: Health check
+        run: |
+          echo "Waiting 10 seconds for service to restart..."
+          sleep 10
+          
+          # Check if health endpoint is accessible
+          if [ -n "${{ secrets.DREAMHOST_HEALTH_URL }}" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.DREAMHOST_HEALTH_URL }})
+            echo "Health check returned: $HTTP_CODE"
+            
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "✅ Health check passed"
+            else
+              echo "⚠️ Health check returned non-success status: $HTTP_CODE"
+              echo "Deployment may need manual verification"
+            fi
+          else
+            echo "⚠️ DREAMHOST_HEALTH_URL not set, skipping health check"
+          fi
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment successful"
+          else
+            echo "❌ Deployment failed"
+            exit 1
+          fi
