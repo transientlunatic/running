@@ -1,4 +1,5 @@
-python_version=3.8.1
+python_version=3.11.4
+zlib_version=1.3.1
 python_version_short=${python_version%.*}
 echo python_version: $python_version
 echo python_version_short: $python_version_short
@@ -6,14 +7,14 @@ echo python_version_short: $python_version_short
 mkdir ~/src
 cd ~/src
 # Download and extract zlib source code
-wget https://zlib.net/zlib-1.3.1.tar.gz
-tar xzvf zlib-1.3.1.tar.gz
-cd zlib-1.3.1
+wget https://zlib.net/zlib-${zlib_version}.tar.gz
+tar xzvf zlib-${zlib_version}.tar.gz
+cd zlib-${zlib_version}
 
  ./configure --prefix=$HOME/local 
 
  make && make install
- 
+
 # Download and extract Python source code
 wget --no-check-certificate https://www.python.org/ftp/python/${python_version}/Python-${python_version}.tgz
 tar zxvf Python-${python_version}.tgz 
