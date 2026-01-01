@@ -12,6 +12,7 @@ from typing import Optional
 import pandas as pd
 from datetime import datetime
 
+from .. import __version__
 from ..database import RaceResultsDatabase
 from ..models import NormalizedRaceResult, normalize_race_results, ColumnMapping
 from .config import APIConfig
@@ -99,7 +100,7 @@ def register_routes(app: Flask) -> None:
         return jsonify(
             {
                 "name": "Race Results API",
-                "version": "1.0.0",
+                "version": __version__,
                 "description": "RESTful API for managing and querying running race results",
                 "endpoints": {
                     "GET /api/races": "List all races",
