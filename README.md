@@ -27,6 +27,8 @@ See **[INSTALL.md](INSTALL.md)** for installation instructions and **[PACKAGE_SU
 - 🔧 **Data Transformation**: Time conversion, name parsing, column standardization
 - 📊 **Visualization**: Beautiful plots with the Kentigern style
 - 📈 **Statistics**: Comprehensive race statistics and comparisons
+- 🌐 **RESTful API**: Query and manage race results via HTTP API (NEW!)
+- 💾 **Database**: Persistent storage with SQLite for multi-year tracking
 
 ### Example Usage
 
@@ -65,11 +67,16 @@ print(stats.percentile_table())
   - `transform.py` - Data transformation tools
   - `plotting.py` - Visualization with Kentigern style
   - `stats.py` - Statistical analysis functions
+  - `database.py` - SQLite database for persistent storage
+  - `api/` - RESTful API with Flask
+    - Full API documentation in `api/API_DOCUMENTATION.md`
+    - DreamHost deployment guide in `DREAMHOST_DEPLOYMENT.md`
 
 ### Example Scripts
 - **examples/tinto_example.py** - Tinto analysis workflow
 - **examples/edinburgh_example.py** - Edinburgh Marathon workflow
 - **examples/comparison_example.py** - Multi-race comparison
+- **examples/api_example.py** - RESTful API demo server (NEW!)
 
 ### Data Files
 - **tinto/** - Historical Tinto Hill Race results (CSV)
@@ -112,16 +119,61 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions.
 - **[README_PACKAGE.md](README_PACKAGE.md)** - Complete package documentation
 - **[INSTALL.md](INSTALL.md)** - Installation guide
 - **[Package Demo.ipynb](Package%20Demo.ipynb)** - Interactive tutorial
+- **[API Documentation](running_results/api/API_DOCUMENTATION.md)** - RESTful API reference (NEW!)
+- **[DreamHost Deployment](DREAMHOST_DEPLOYMENT.md)** - FastCGI deployment guide (NEW!)
+
+## RESTful API (NEW!)
+
+The package now includes a complete RESTful API for querying and managing race results:
+
+```bash
+# Start the API server
+python examples/api_example.py
+
+# Or use programmatically
+from running_results.api import create_app, APIConfig
+
+config = APIConfig()
+config.API_KEYS = {'your-api-key'}
+app = create_app(config=config)
+app.run()
+```
+
+**Features:**
+- Query races, results, and runner histories via HTTP
+- Add new results with API key authentication
+- FastCGI support for shared hosting (DreamHost)
+- Comprehensive documentation with examples
+
+**Example API calls:**
+```bash
+# List all races
+curl http://localhost:5000/api/races
+
+# Get race results
+curl http://localhost:5000/api/races/Edinburgh%20Marathon/results?year=2024
+
+# Add new results (requires API key)
+curl -X POST http://localhost:5000/api/results \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"race_name": "Test Race", "results": [...]}'
+```
+
+See the [API Documentation](running_results/api/API_DOCUMENTATION.md) for complete details.
 
 ## Requirements
 
-- Python 3.7+
+- Python 3.10+
 - pandas
 - numpy
 - matplotlib
 - nameparser
 - requests
 - tqdm
+- pydantic
+- flask (for API)
+- flask-cors (for API)
 
 All dependencies are listed in [requirements.txt](requirements.txt).
 
@@ -130,7 +182,14 @@ All dependencies are listed in [requirements.txt](requirements.txt).
 Run the test suite to verify the package:
 
 ```bash
-python test_package.py
+# Install test dependencies
+pip install pytest pytest-cov
+
+# Run all tests
+pytest
+
+# Run specific test module
+pytest tests/test_api.py
 ```
 
 ## Contributing

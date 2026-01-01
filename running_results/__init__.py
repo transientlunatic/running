@@ -23,6 +23,7 @@ from .manager import RaceResultsManager
 from .ranking import RunnerRegistry, EloRanking
 from .cli import cli
 from .reporting import generate_race_report, generate_comparison_report, generate_runner_report
+from .api import create_app, get_app, APIConfig
 
 from .models import (
     NormalizedRaceResult,
@@ -72,4 +73,7 @@ __all__ = [
     'generate_race_report',
     'generate_comparison_report',
     'generate_runner_report',
+    'create_app',
+    'get_app',
+    'APIConfig',
 ]
