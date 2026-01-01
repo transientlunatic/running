@@ -75,7 +75,7 @@ jobs:
             pip install --upgrade "$REPO_PATH"
             
             # Install FastCGI support if not already installed
-            pip install flup
+            pip show flup >/dev/null 2>&1 || pip install flup
             
             # Restart FastCGI by touching the script
             cd "$DEPLOY_PATH"
