@@ -30,17 +30,89 @@ def cli(ctx, db):
 
 
 @cli.command()
-@click.argument("file_path", type=click.Path(exists=True))
-@click.option("--name", required=True, help="Race name")
-@click.option("--year", type=int, required=True, help="Race year")
-@click.option(
-    "--category",
-    type=click.Choice([c.value for c in RaceCategory]),
-    default="road_race",
-    help="Race category",
-)
+@click.option('--dir', 'dir_path', type=click.Path(exists=True, file_okay=False, dir_okay=True), required=True, help='Directory containing result files')
+@click.option('--pattern', default='*.csv', help='Glob pattern for files (e.g., *.csv, *.tsv, *.xlsx)')
+@click.option('--recursive', is_flag=True, default=True, help='Recurse into subdirectories')
+@click.option('--name', help='Default race name (overrides filename guessing)')
+@click.option('--year', type=int, help='Default race year (overrides filename guessing)')
+@click.option('--category', type=click.Choice([c.value for c in RaceCategory]), default='road_race', help='Race category')
+@click.option('--default-category', help='Default age category when missing (e.g., M or F)')
+@click.option('--guess-from-filename', is_flag=True, default=True, help='Infer race name/year from filename')
 @click.pass_context
-def add(ctx, file_path, name, year, category):
+def bulk_import(ctx, dir_path, pattern, recursive, name, year, category, default_category, guess_from_filename):
+    """
+    Bulk-import results from a directory.
+    
+    Scans for files matching a pattern and imports them.
+    Attempts to infer race name and year from filenames when not provided.
+    
+    Examples:
+        running-results bulk-import --dir tinto --pattern "*.csv"
+        running-results bulk-import --dir data --pattern "**/*.csv" --name "Tinto" --category fell_race
+    """
+    db_path = ctx.obj['DB_PATH']
+
+    def infer_name_year(p: Path):
+        file_stem = p.stem
+        # Try to find a 4-digit year
+        import re
+        m = re.search(r'(19|20)\d{2}', file_stem)
+        infer_year = int(m.group(0)) if m else None
+        # Race name: remove year and separators
+        cleaned = re.sub(r'(19|20)\d{2}', '', file_stem)
+        cleaned = cleaned.replace('_', ' ').replace('-', ' ').strip()
+        # If empty, use parent folder name
+        infer_name = cleaned or p.parent.name
+        # Title-case for readability
+        infer_name = infer_name.strip()
+        return infer_name, infer_year
+
+    root = Path(dir_path)
+    files = []
+    if recursive:
+        files = list(root.rglob(pattern))
+    else:
+        files = list(root.glob(pattern))
+
+    if not files:
+        click.echo(f"No files found in {dir_path} matching '{pattern}'.")
+        return
+
+    imported = 0
+    errors = 0
+    with RaceResultsManager(db_path) as manager:
+        for fp in files:
+            race_name = name
+            race_year = year
+            if guess_from_filename:
+                inf_name, inf_year = infer_name_year(fp)
+                race_name = race_name or inf_name
+                race_year = race_year or inf_year
+            try:
+                count = manager.add_from_file(
+                    file_path=str(fp),
+                    race_name=race_name,
+                    year=race_year,
+                    race_category=category,
+                    auto_detect=True,
+                    default_age_category=default_category
+                )
+                imported += count
+                click.echo(f"✓ {fp} → {race_name} ({race_year}) [{count} rows]")
+            except Exception as e:
+                errors += 1
+                click.echo(f"✗ {fp}: {e}", err=True)
+
+    click.echo(f"\nSummary: Imported {imported} rows from {len(files)-errors} file(s). {errors} error(s).")
+
+@click.argument('file_path', type=click.Path(exists=True))
+@click.option('--name', required=True, help='Race name')
+@click.option('--year', type=int, required=True, help='Race year')
+@click.option('--category', type=click.Choice([c.value for c in RaceCategory]), 
+              default='road_race', help='Race category')
+@click.option('--default-category', help='Default age category when missing (e.g., M or F)')
+@click.pass_context
+def add(ctx, file_path, name, year, category, default_category):
     """
     Add race results from a file.
 
@@ -56,8 +128,9 @@ def add(ctx, file_path, name, year, category):
             count = manager.add_from_file(
                 file_path=file_path,
                 race_name=name,
-                race_year=year,
+                year=year,
                 race_category=category,
+                default_age_category=default_category
             )
             click.echo(f"✓ Successfully added {count} results to {name} ({year})")
         except Exception as e:
@@ -66,18 +139,15 @@ def add(ctx, file_path, name, year, category):
 
 
 @cli.command()
-@click.argument("url")
-@click.option("--name", required=True, help="Race name")
-@click.option("--year", type=int, required=True, help="Race year")
-@click.option(
-    "--category",
-    type=click.Choice([c.value for c in RaceCategory]),
-    default="road_race",
-    help="Race category",
-)
-@click.option("--table-selector", help="CSS selector for results table")
+@click.argument('url')
+@click.option('--name', required=True, help='Race name')
+@click.option('--year', type=int, required=True, help='Race year')
+@click.option('--category', type=click.Choice([c.value for c in RaceCategory]),
+              default='road_race', help='Race category')
+@click.option('--table-selector', help='CSS selector for results table')
+@click.option('--default-category', help='Default age category when missing (e.g., M or F)')
 @click.pass_context
-def import_url(ctx, url, name, year, category, table_selector):
+def import_url(ctx, url, name, year, category, table_selector, default_category):
     """
     Import race results from a URL.
 
@@ -93,9 +163,10 @@ def import_url(ctx, url, name, year, category, table_selector):
             count = manager.add_from_url(
                 url=url,
                 race_name=name,
-                race_year=year,
+                year=year,
                 race_category=category,
-                table_selector=table_selector,
+                selector=table_selector,
+                default_age_category=default_category
             )
             click.echo(f"✓ Successfully imported {count} results from {url}")
         except Exception as e:
@@ -330,5 +401,71 @@ def runner(ctx, runner_name, race, output):
             sys.exit(1)
 
 
-if __name__ == "__main__":
+@cli.command()
+@click.option('--race', help='Specific race (None = all races)')
+@click.option('--year', type=int, help='Specific year (None = all years)')
+@click.option('--recalculate', is_flag=True, help='Recalculate all ratings from scratch')
+@click.pass_context
+def calculate_rankings(ctx, race, year, recalculate):
+    """
+    Calculate Elo rankings for runners.
+    
+    Computes Elo ratings based on race finishes. Ratings accumulate across all of
+    a runner's races in chronological order. Runners are identified by name and 
+    club combination to handle duplicates.
+    
+    Example:
+        running-results calculate-rankings
+        running-results calculate-rankings --race "Tinto Hill Race" --year 2024
+        running-results calculate-rankings --recalculate
+    """
+    db_path = ctx.obj['DB_PATH']
+    
+    with RaceResultsManager(db_path) as manager:
+        click.echo("Calculating rankings...")
+        manager.db.calculate_rankings(race_name=race, race_year=year, recalculate=recalculate)
+        click.echo("✓ Rankings calculated successfully")
+
+
+@cli.command()
+@click.option('--year', type=int, help='Specific year (None = all-time)')
+@click.option('--limit', type=int, default=20, help='Number of top runners to show')
+@click.option('--output', type=click.Path(), help='Output file (CSV)')
+@click.pass_context
+def rankings(ctx, year, limit, output):
+    """
+    Display Elo rankings for runners.
+    
+    Shows top-ranked runners based on Elo ratings.
+    
+    Example:
+        running-results rankings
+        running-results rankings --year 2024 --limit 50
+        running-results rankings --output rankings.csv
+    """
+    db_path = ctx.obj['DB_PATH']
+    
+    with RaceResultsManager(db_path) as manager:
+        df = manager.db.get_elo_rankings(year=year, limit=limit)
+        
+        if len(df) == 0:
+            click.echo("No rankings found. Run 'calculate-rankings' first.")
+            return
+        
+        if output:
+            df.to_csv(output, index=False)
+            click.echo(f"✓ Exported {len(df)} rankings to {output}")
+        else:
+            click.echo(f"\n{'Rank':<6} {'Name':<22} {'Club':<22} {'Rating':<8} {'Games':<8} {'Races':<8}")
+            click.echo("-" * 80)
+            for idx, row in df.iterrows():
+                click.echo(
+                    f"{idx+1:<6} {str(row['name'])[:22]:<22} "
+                    f"{str(row['club'] or '')[:22]:<22} "
+                    f"{row['rating']:.0f}   {int(row['games_played']):<8} {int(row.get('races_count', 0)):<8}"
+                )
+
+
+if __name__ == '__main__':
     cli(obj={})
+

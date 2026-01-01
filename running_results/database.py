@@ -329,10 +329,15 @@ class RaceResultsDatabase:
             params.append(f"%{club}%")
 
         # Ensure rows with NULL position (e.g., DNF) are ordered after finishers
-        query += " ORDER BY e.race_year, (res.position_overall IS NULL), res.position_overall"
-
-        return pd.read_sql_query(query, self.conn, params=params)
-
+        query += ' ORDER BY e.race_year, (res.position_overall IS NULL), res.position_overall'
+        
+        df = pd.read_sql_query(query, self.conn, params=params)
+        # Cast position columns to nullable integers to avoid float display
+        for col in ['position_overall', 'position_gender', 'position_category']:
+            if col in df.columns:
+                df[col] = df[col].astype('Int64')
+        return df
+    
     def get_races(self) -> pd.DataFrame:
         """Get list of all races in database."""
         query = """
@@ -365,7 +370,37 @@ class RaceResultsDatabase:
             DataFrame with runner's results over time
         """
         return self.get_race_results(race_name=race_name, runner_name=runner_name)
-
+    
+    def get_elo_rankings(self, year: Optional[int] = None, limit: Optional[int] = None) -> pd.DataFrame:
+        """
+        Get Elo rankings for runners.
+        
+        Args:
+            year: Specific year (None = all-time)
+            limit: Maximum number to return
+            
+        Returns:
+            DataFrame with rankings
+        """
+        from .ranking import EloRanking
+        elo = EloRanking(self.conn)
+        return elo.get_rankings(year=year, limit=limit)
+    
+    def calculate_rankings(self, race_name: Optional[str] = None, race_year: Optional[int] = None, recalculate: bool = False):
+        """
+        Calculate or update Elo rankings.
+        
+        Ratings accumulate across all of a runner's races in chronological order.
+        
+        Args:
+            race_name: Specific race (None = all races)
+            race_year: Specific year (None = all years)
+            recalculate: If True, recalculate all ratings from scratch
+        """
+        from .ranking import EloRanking
+        elo = EloRanking(self.conn)
+        elo.calculate_race_ratings(race_name=race_name, race_year=race_year, recalculate=recalculate)
+    
     def close(self):
         """Close database connection."""
         self.conn.close()

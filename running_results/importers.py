@@ -62,22 +62,65 @@ class ResultsImporter:
             >>> df = importer.from_url('https://example.com/tinto-2024-results')
             >>> df = importer.from_url('https://example.com/results', selector='table.results')
         """
-        response = self.session.get(url, timeout=30)
-        response.raise_for_status()
+        def fetch(u: str):
+            resp = self.session.get(u, timeout=30)
+            resp.raise_for_status()
+            return resp
 
-        # Try to parse as HTML table
-        soup = BeautifulSoup(response.content, "html.parser")
+        # Fetch once; if the HTTPS response is broken (empty/no tables), retry with HTTP
+        response = fetch(url)
+
+        def parse_tables(content):
+            soup = BeautifulSoup(content, 'html.parser')
+            return soup.select(selector) if selector else soup.find_all('table')
+
+        content = response.content
+        tables = parse_tables(content)
+        source_url = url
+
+        if not tables and url.startswith('https://'):
+            fallback_url = 'http://' + url[len('https://'):]
+            response = fetch(fallback_url)
+            content = response.content
+            tables = parse_tables(content)
+            if tables:
+                source_url = fallback_url
+
+        # First try pandas' HTML parser when no CSS selector is provided; it copes better
+        # with messy markup (e.g., concatenated cells).
+        if not selector:
+            try:
+                pd_tables = pd.read_html(content)
+            except Exception:
+                pd_tables = []
+            if pd_tables:
+                chosen_index = table_index
+                if table_index == 0 and len(pd_tables) > 1:
+                    # Auto-pick the largest table when no explicit index provided
+                    chosen_index = max(range(len(pd_tables)), key=lambda i: pd_tables[i].shape[0])
+                if chosen_index >= len(pd_tables):
+                    raise ValueError(f"Table index {table_index} out of range (found {len(pd_tables)} tables)")
+                df = pd_tables[chosen_index]
+                # Heuristic: first row may actually be headers (Posn/Name/Club/Time/Cat)
+                def header_score(values):
+                    keywords = ['pos', 'position', 'name', 'club', 'time', 'cat']
+                    vals = [str(v).strip().lower() for v in values]
+                    return sum(any(k == v or k in v for k in keywords) for v in vals)
+                if df.shape[0] > 0:
+                    first = df.iloc[0].tolist()
+                    if header_score(first) >= 2 and df.shape[1] == len(first):
+                        cols = [str(c).strip().replace('Cat:', 'Cat').replace('cat:', 'Cat') for c in first]
+                        df = df.iloc[1:].copy()
+                        df.columns = cols
+                df.attrs['source_url'] = source_url
+                return df
 
         if selector:
-            # Use CSS selector
-            tables = soup.select(selector)
             if not tables:
                 raise ValueError(f"No tables found with selector '{selector}'")
             table = tables[0]
             df = self._parse_html_table(table)
         else:
-            # Find all tables and use table_index
-            tables = soup.find_all("table")
             if not tables:
                 raise ValueError("No tables found in HTML")
             if table_index >= len(tables):
@@ -87,7 +130,7 @@ class ResultsImporter:
             df = self._parse_html_table(tables[table_index])
 
         # Store source URL as metadata
-        df.attrs["source_url"] = url
+        df.attrs['source_url'] = source_url
 
         return df
 
@@ -170,7 +213,7 @@ class ResultsImporter:
 
     def _parse_html_table(self, table) -> pd.DataFrame:
         """Parse an HTML table element into a DataFrame."""
-        # Extract headers
+        # Extract headers if explicitly present
         headers = []
         header_row = table.find("thead")
         if header_row:
@@ -181,29 +224,46 @@ class ResultsImporter:
             # Try first row
             first_row = table.find("tr")
             if first_row:
-                headers = [
-                    th.get_text(strip=True) for th in first_row.find_all(["th", "td"])
-                ]
+                headers = [th.get_text(strip=True) for th in first_row.find_all(['th', 'td'])]
 
-        # Extract data rows
+        # Extract all rows (including potential header rows)
         rows = []
-        tbody = table.find("tbody")
-        row_elements = tbody.find_all("tr") if tbody else table.find_all("tr")
+        tbody = table.find('tbody')
+        row_elements = tbody.find_all('tr') if tbody else table.find_all('tr')
 
-        # Skip header row if we already got headers
-        start_idx = 1 if not tbody and headers else 0
-
-        for row in row_elements[start_idx:]:
-            cells = row.find_all(["td", "th"])
+        for row in row_elements:
+            cells = row.find_all(['td', 'th'])
             row_data = [cell.get_text(strip=True) for cell in cells]
             if row_data:  # Skip empty rows
                 rows.append(row_data)
 
-        # Create DataFrame
-        if headers and len(headers) == len(rows[0]) if rows else False:
-            df = pd.DataFrame(rows, columns=headers)
-        else:
-            df = pd.DataFrame(rows)
+        if not rows and not headers:
+            return pd.DataFrame()
+
+        # Heuristic: if headers look weak, search within rows for a better header line
+        def header_score(row):
+            keywords = ['pos', 'position', 'name', 'runner', 'club', 'time', 'cat']
+            row_lower = [str(c).lower() for c in row]
+            return sum(any(k in cell for k in keywords) for cell in row_lower)
+
+        candidate_headers = headers or []
+        best_score = header_score(candidate_headers) if candidate_headers else 0
+        best_idx = None
+
+        if best_score < 2:  # Not confident this is a real header row
+            for idx, row in enumerate(rows):
+                score = header_score(row)
+                if score > best_score:
+                    best_score = score
+                    best_idx = idx
+            if best_idx is not None and best_score >= 2:
+                candidate_headers = rows[best_idx]
+                rows = rows[best_idx + 1:]
+
+        # Build DataFrame
+        df = pd.DataFrame(rows)
+        if candidate_headers and len(candidate_headers) == df.shape[1]:
+            df.columns = candidate_headers
 
         return df
 
@@ -283,6 +343,10 @@ class SmartImporter:
             List of NormalizedRaceResult objects
         """
         from .models import RaceResultsNormalizer, ColumnMapping, RaceCategory
+        
+        # Pull out normalization-only kwargs so they don't leak into importer calls
+        norm_default_age_category = kwargs.pop('default_age_category', None)
+        norm_default_gender = kwargs.pop('default_gender', None)
 
         # Import data
         source_url = None
@@ -310,6 +374,10 @@ class SmartImporter:
             col_mapping = column_mapping
         elif mapping:
             col_mapping = ColumnMapping(**mapping)
+        
+        # Extract optional defaults if provided
+        default_age_category = norm_default_age_category
+        default_gender = norm_default_gender
 
         normalizer = RaceResultsNormalizer(
             mapping=col_mapping,
@@ -317,6 +385,8 @@ class SmartImporter:
             race_name=race_name,
             race_year=race_year,
             race_category=race_category,
+            default_age_category=default_age_category,
+            default_gender=default_gender
         )
 
         # Normalize

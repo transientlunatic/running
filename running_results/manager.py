@@ -72,6 +72,7 @@ class RaceResultsManager:
         table_index: int = 0,
         selector: Optional[str] = None,
         auto_detect: bool = True,
+        **kwargs
     ) -> int:
         """
         Import and store results from a URL.
@@ -85,7 +86,8 @@ class RaceResultsManager:
             table_index: Which table to extract from page (default: 0)
             selector: CSS selector for table (optional)
             auto_detect: Auto-detect column mappings
-
+            **kwargs: Additional arguments forwarded to the importer (e.g., read_html kwargs)
+            
         Returns:
             Number of results added
 
@@ -116,6 +118,7 @@ class RaceResultsManager:
             auto_detect=auto_detect,
             table_index=table_index,
             selector=selector,
+            **kwargs
         )
 
         # Store in database
