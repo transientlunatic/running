@@ -183,6 +183,7 @@ class ColumnStandardizer:
         'Category': 'RunnerCategory',
         'Cat': 'RunnerCategory',
         'Cat.': 'RunnerCategory',
+        'Cat:': 'RunnerCategory',
         'Class': 'RunnerCategory',
         
         # Identifier columns

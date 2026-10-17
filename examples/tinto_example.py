@@ -20,7 +20,7 @@ def main():
     # Fetch multiple years of data
     fetcher = MultiYearRaceData(
         url_template="https://carnethy.com/ri_results/tinto/t_{year}.htm",
-        years=range(1985, 2005),  # Adjust range as needed
+        years=range(2004, 2005),  # Adjust range as needed
         table_index=-2,
         on_error='warn'
     )
@@ -31,10 +31,10 @@ def main():
     # Transform data
     print("\nTransforming data...")
     transformer = RaceDataTransformer()
-    
-    # Clean header row (use first row as column names)
+
+    # Promote first row to column headers (page has a title row before the actual headers)
     data = transformer.clean_header_row(data, header_row_index=0)
-    
+
     # Parse names
     data = NameParser.add_name_columns(data, name_column='Name')
     
@@ -47,6 +47,7 @@ def main():
         'Race No. ': 'RaceNumber',
         'Category': 'RunnerCategory',
         'Cat.': 'RunnerCategory',
+        'Cat:': 'RunnerCategory',
         'Cat': 'RunnerCategory',
         'Time': 'FinishTime',
         'Tiime': 'FinishTime',
@@ -62,11 +63,13 @@ def main():
     # Add time conversions
     data = transformer.add_time_conversions(data, time_column='FinishTime')
     
+    print(data)
+
     # Save to CSV files by year
     print("\nSaving data by year...")
-    for year in data['year'].unique():
-        year_data = data[data['year'] == year]
-        year_data.to_csv(f'tinto/{int(year)}.csv', index=False)
+    for year in [2004]:
+        year_data = data#[data['year'] == year]
+        year_data.to_csv(f'{int(year)}.csv', index=False)
         print(f"  Saved {len(year_data)} results for {int(year)}")
     
     # Calculate statistics
