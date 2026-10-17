@@ -1,0 +1,116 @@
+name: Deploy to Dreamhost
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'running_results/**'
+      - 'requirements.txt'
+      - 'pyproject.toml'
+      - 'setup.py'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Dreamhost via SSH
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # Required to checkout code
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'  # Using 3.11 for deployment validation; actual server Python version may vary
+          cache: 'pip'
+
+      - name: Deploy to Dreamhost
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262  # v1.0.3
+        with:
+          host: ${{ secrets.DREAMHOST_HOST }}
+          username: ${{ secrets.DREAMHOST_USERNAME }}
+          key: ${{ secrets.DREAMHOST_SSH_KEY }}
+          port: ${{ secrets.DREAMHOST_PORT }}
+          script_stop: true
+          script: |
+            set -e
+            
+            # Navigate to deployment directory
+            DEPLOY_PATH="${{ secrets.DREAMHOST_DEPLOY_PATH }}"
+            cd "$DEPLOY_PATH"
+            
+            # Activate virtual environment
+            source venv/bin/activate
+            
+            # Pull latest code
+            REPO_NAME="$(basename "${{ github.repository }}")"
+            REPO_PATH="$DEPLOY_PATH/$REPO_NAME"
+            if [ -d "$REPO_PATH" ]; then
+              cd "$REPO_PATH"
+              git fetch origin
+              # Try main branch first, fall back to master
+              if git rev-parse --verify origin/main >/dev/null 2>&1; then
+                git reset --hard origin/main
+              elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+                git reset --hard origin/master
+              else
+                echo "Error: Neither main nor master branch found"
+                exit 1
+              fi
+              echo "Deployed commit: $(git rev-parse HEAD)"
+            else
+              git clone -b "${{ github.ref_name }}" --single-branch https://github.com/${{ github.repository }}.git "$REPO_PATH"
+              cd "$REPO_PATH"
+              echo "Deployed commit: $(git rev-parse HEAD)"
+            fi
+            
+            # Install/upgrade the package
+            pip install --upgrade "$REPO_PATH"
+            
+            # Install FastCGI support if not already installed
+            pip show flup >/dev/null 2>&1 || pip install flup
+            
+            # Restart FastCGI by touching the script
+            cd "$DEPLOY_PATH"
+            if [ -f "api.fcgi" ]; then
+              touch api.fcgi
+            fi
+            
+            echo "Deployment completed successfully"
+
+      - name: Health check
+        run: |
+          echo "Waiting 10 seconds for service to restart..."
+          sleep 10
+          
+          # Check if health endpoint is accessible
+          HEALTH_URL="${{ secrets.DREAMHOST_HEALTH_URL }}"
+          if [ -n "$HEALTH_URL" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$HEALTH_URL")
+            echo "Health check returned: $HTTP_CODE"
+            
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "✅ Health check passed"
+            else
+              echo "⚠️ Health check returned non-success status: $HTTP_CODE"
+              echo "Deployment may need manual verification"
+            fi
+          else
+            echo "⚠️ DREAMHOST_HEALTH_URL not set, skipping health check"
+          fi
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment successful"
+          else
+            echo "❌ Deployment failed"
+            exit 1
+          fi

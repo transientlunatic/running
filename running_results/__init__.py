@@ -13,8 +13,18 @@ Modules:
 
 __version__ = "0.1.0"
 
-from .data import RaceDataFetcher, CSVRaceData, PaginatedRaceDataFetcher, MultiYearRaceData
-from .transform import TimeConverter, NameParser, ColumnStandardizer, RaceDataTransformer
+from .data import (
+    RaceDataFetcher,
+    CSVRaceData,
+    PaginatedRaceDataFetcher,
+    MultiYearRaceData,
+)
+from .transform import (
+    TimeConverter,
+    NameParser,
+    ColumnStandardizer,
+    RaceDataTransformer,
+)
 from .plotting import KentigernPlot, RacePlotter
 from .stats import RaceStatistics, RaceComparison
 from .database import RaceResultsDatabase
@@ -22,7 +32,11 @@ from .importers import ResultsImporter, SmartImporter
 from .manager import RaceResultsManager
 from .ranking import RunnerRegistry, EloRanking
 from .cli import cli
-from .reporting import generate_race_report, generate_comparison_report, generate_runner_report
+from .reporting import (
+    generate_race_report,
+    generate_comparison_report,
+    generate_runner_report,
+)
 from .api import create_app, get_app, APIConfig
 
 from .models import (

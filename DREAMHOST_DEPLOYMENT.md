@@ -2,11 +2,119 @@
 
 This guide explains how to deploy the Race Results API on DreamHost shared hosting using FastCGI.
 
+## Deployment Options
+
+There are two ways to deploy the API:
+1. **Automated Deployment via GitHub Actions** (recommended) - Automatically deploys on push to main/master branch
+2. **Manual Deployment** - Manual SSH deployment following step-by-step instructions
+
 ## Prerequisites
 
 - DreamHost shared hosting account with shell access
 - Python 3.7 or higher installed
 - SSH access to your hosting account
+
+---
+
+## Option 1: Automated Deployment via GitHub Actions (Recommended)
+
+The repository includes a GitHub Actions workflow that automatically deploys to DreamHost when changes are pushed to the main/master branch.
+
+### Setup GitHub Secrets
+
+Configure the following secrets in your GitHub repository (Settings → Secrets and variables → Actions):
+
+| Secret Name | Description | Example |
+|-------------|-------------|---------|
+| `DREAMHOST_HOST` | Your DreamHost server hostname | `yourserver.dreamhost.com` |
+| `DREAMHOST_USERNAME` | Your SSH username | `yourusername` |
+| `DREAMHOST_SSH_KEY` | Your private SSH key for authentication | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `DREAMHOST_PORT` | SSH port (usually 22) | `22` |
+| `DREAMHOST_DEPLOY_PATH` | Absolute path to deployment directory | `/home/yourusername/yourdomain.com` |
+| `DREAMHOST_HEALTH_URL` | (Optional) Health check endpoint URL | `https://yourdomain.com/api/health` |
+
+### Generate SSH Key Pair
+
+If you don't already have an SSH key pair for deployment:
+
+```bash
+# On your local machine
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f dreamhost_deploy_key
+```
+
+This creates two files:
+- `dreamhost_deploy_key` - Private key (add to GitHub Secrets as `DREAMHOST_SSH_KEY`)
+- `dreamhost_deploy_key.pub` - Public key (add to DreamHost authorized_keys)
+
+### Add Public Key to DreamHost
+
+```bash
+# SSH to your DreamHost server
+ssh yourusername@yourserver.dreamhost.com
+
+# Add the public key to authorized_keys
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+echo "your-public-key-content" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+### Initial Manual Setup Required
+
+Before the automated deployment can work, you need to perform the initial setup once manually:
+
+1. **Create the deployment directory structure:**
+   ```bash
+   ssh yourusername@yourserver.dreamhost.com
+   cd ~/yourdomain.com
+   python3 -m venv venv
+   ```
+
+2. **Create configuration files** (see Manual Deployment section below for details):
+   - `api_config.py` - API configuration with keys and secrets
+   - `.htaccess` - Apache rewrite rules
+   - `api.fcgi` - FastCGI entry point
+
+3. **Create the database:**
+   ```bash
+   source venv/bin/activate
+   python3 << EOF
+   from running_results.database import RaceResultsDatabase
+   db = RaceResultsDatabase('race_results.db')
+   db.close()
+   print("Database created successfully!")
+   EOF
+   ```
+
+### How Automated Deployment Works
+
+Once configured, the GitHub Actions workflow:
+
+1. **Triggers** on push to main/master or manual workflow dispatch
+2. **Connects** to DreamHost via SSH using stored credentials
+3. **Clones/Updates** the repository on the server
+4. **Installs** the package and dependencies in the virtual environment
+5. **Restarts** the FastCGI service by touching `api.fcgi`
+6. **Validates** deployment with a health check (if URL configured)
+
+### Manual Trigger
+
+You can manually trigger a deployment from GitHub:
+1. Go to Actions → Deploy to Dreamhost
+2. Click "Run workflow"
+3. Select the branch and click "Run workflow"
+
+### Monitoring Deployments
+
+- View deployment status in the Actions tab of your GitHub repository
+- Check logs for any deployment failures
+- Health check results appear in the workflow logs
+
+---
+
+## Option 2: Manual Deployment
+
+If you prefer to deploy manually or need to troubleshoot, follow these steps:
 
 ## Step-by-Step Deployment
 
